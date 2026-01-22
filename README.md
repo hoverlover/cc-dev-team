@@ -44,6 +44,7 @@ A multi-agent orchestration system for software development that enables a human
 ### Prerequisites
 
 - Node.js 18+
+- [Bun](https://bun.sh) (for the dashboard)
 - Python 3.x
 - [Claude Code CLI](https://claude.ai/code) installed and authenticated
 
@@ -77,14 +78,22 @@ The install script will:
 ./scripts/start-broker.sh
 ```
 
-### 2. Start the PM (from your project directory)
+### 2. Start the Dashboard (optional)
+
+```bash
+./scripts/start-dashboard.sh
+```
+
+Open http://localhost:3101 to view agent status and team chat in real-time.
+
+### 3. Start the PM (from your project directory)
 
 ```bash
 cd /path/to/your/project
 /path/to/agentic-orchestrator/scripts/start-pm.sh
 ```
 
-### 3. Start Sub-Agents (separate terminals)
+### 4. Start Sub-Agents (separate terminals)
 
 ```bash
 /path/to/agentic-orchestrator/scripts/start-agent.sh architect
@@ -92,7 +101,7 @@ cd /path/to/your/project
 /path/to/agentic-orchestrator/scripts/start-agent.sh qa
 ```
 
-### 4. Talk to the PM
+### 5. Talk to the PM
 
 In the PM terminal:
 ```
@@ -115,12 +124,18 @@ agentic-orchestrator/
 │   └── code-auditor/
 ├── broker/                 # Message broker
 │   └── server.js           # Socket.io server
+├── dashboard/              # Web dashboard (Next.js + TypeScript)
+│   ├── app/                # Next.js app directory
+│   │   ├── page.tsx        # Main dashboard page
+│   │   └── globals.css     # Global styles
+│   └── package.json        # Dashboard dependencies (Bun)
 ├── hooks/                  # Claude Code hooks
 │   ├── check-pending.py    # Notifies agent of pending messages
 │   └── session-start.py    # Initial context on startup
 ├── scripts/                # Startup scripts
 │   ├── install.sh          # Installation script
 │   ├── start-broker.sh
+│   ├── start-dashboard.sh
 │   ├── start-pm.sh
 │   └── start-agent.sh
 ├── tools/                  # CLI tools and wrapper
@@ -237,9 +252,28 @@ Agents check for messages via hooks. If hooks aren't triggering:
 2. Check hook scripts are executable
 3. Manually check: `node tools/check-messages.js`
 
+## Dashboard
+
+The web dashboard (built with Next.js + TypeScript) provides real-time visibility into the orchestration system:
+
+- **Agent Status**: See which agents are online/offline in real-time
+- **Team Chat**: View all messages between agents as they happen
+- **Project Info**: Current project directory being worked on
+
+Start with `./scripts/start-dashboard.sh` and open http://localhost:3101
+
+The dashboard connects to the broker via Socket.io and receives real-time updates for:
+- Agent join/leave events
+- All inter-agent messages
+- Project context changes
+
+### Environment Variables
+
+- `NEXT_PUBLIC_BROKER_URL` - Broker URL for socket connection (default: http://localhost:3100)
+
 ## Future Enhancements
 
-- [ ] Web dashboard for monitoring
+- [x] Web dashboard for monitoring
 - [ ] Voice interface for PM
 - [ ] Git integration with agent attribution
 - [ ] Cost tracking per agent

@@ -1,6 +1,9 @@
 # Dependencies
 node_modules/
 
+# Next.js
+.next/
+
 # Runtime data
 data/*.db
 data/*.db-journal
