@@ -1,0 +1,17 @@
+{
+  "name": "agentic-orchestrator",
+  "version": "0.1.0",
+  "description": "Multi-agent orchestration system for software development with Claude Code",
+  "type": "module",
+  "scripts": {
+    "broker": "node broker/server.js",
+    "dashboard": "cd dashboard && npm run dev"
+  },
+  "dependencies": {
+    "@lydell/node-pty-darwin-arm64": "^1.2.0-beta.7",
+    "better-sqlite3": "^11.0.0",
+    "node-pty": "^1.1.0",
+    "socket.io": "^4.7.4",
+    "socket.io-client": "^4.7.4"
+  }
+}

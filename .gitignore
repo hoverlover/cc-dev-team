@@ -1,0 +1,32 @@
+# Dependencies
+node_modules/
+
+# Runtime data
+data/*.db
+data/*.db-journal
+logs/*.log
+
+# Agent instance runtime files
+**/instances/
+**/current-instance
+**/current-agent-id
+**/pending-messages
+**/project-dir
+**/*.pid
+
+# Generated settings (created by install.sh with local paths)
+agents/*/.claude/settings.json
+.claude/settings.json
+
+# Local settings (user-specific overrides)
+**/settings.local.json
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo

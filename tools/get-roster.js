@@ -1,0 +1,57 @@
+#!/usr/bin/env node
+
+/**
+ * Get the current roster of active agents
+ *
+ * Usage: get-roster.js
+ */
+
+import { io } from 'socket.io-client'
+
+const BROKER_URL = process.env.BROKER_URL || 'http://localhost:3100'
+
+const socket = io(BROKER_URL, {
+  query: { agent: 'roster-check' },
+  timeout: 5000
+})
+
+socket.on('connect', () => {
+  socket.emit('get_roster', (roster) => {
+    console.log('\n' + '='.repeat(40))
+    console.log('ACTIVE AGENTS')
+    console.log('='.repeat(40))
+
+    if (roster.length === 0) {
+      console.log('\nNo agents currently connected.')
+    } else {
+      for (const agent of roster) {
+        const icon = {
+          'pm': '👔',
+          'architect': '🏗️',
+          'engineer-1': '⚙️',
+          'engineer-2': '⚙️',
+          'qa': '🧪'
+        }[agent] || '🤖'
+
+        console.log(`  ${icon}  ${agent}`)
+      }
+      console.log(`\nTotal: ${roster.length} agent(s)`)
+    }
+
+    console.log('='.repeat(40) + '\n')
+
+    socket.disconnect()
+    process.exit(0)
+  })
+})
+
+socket.on('connect_error', (err) => {
+  console.error(`Failed to connect to broker at ${BROKER_URL}:`, err.message)
+  console.error('Is the broker running? Start it with: npm run broker')
+  process.exit(1)
+})
+
+setTimeout(() => {
+  console.error('Timeout waiting for broker response')
+  process.exit(1)
+}, 5000)
