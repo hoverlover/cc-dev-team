@@ -26,10 +26,8 @@ def main():
     # If we have an instance dir, use it; otherwise use default .claude
     if instance_dir and os.path.exists(instance_dir):
         project_file = os.path.join(instance_dir, 'project-dir')
-        pending_file = os.path.join(instance_dir, 'pending-messages')
     else:
         project_file = os.path.join(claude_dir, 'project-dir')
-        pending_file = os.path.join(claude_dir, 'pending-messages')
 
     context_parts = []
 
@@ -63,17 +61,8 @@ def main():
         except IOError:
             pass
 
-    # Check for pending messages
-    if os.path.exists(pending_file):
-        try:
-            with open(pending_file, 'r') as f:
-                content = f.read().strip()
-                if content:
-                    messages = json.loads(content)
-                    if messages and len(messages) > 0:
-                        context_parts.append(f"PENDING: You have {len(messages)} pending message(s). Read them at {pending_file}")
-        except (json.JSONDecodeError, IOError):
-            pass
+    # Note: Messages are now delivered in real-time via socket.io
+    # No need to check for pending messages file
 
     if context_parts:
         result = {

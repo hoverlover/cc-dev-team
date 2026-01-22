@@ -43,6 +43,13 @@ const activeAgents = new Map()
 // Track project context
 let currentProject = null
 
+// Track dashboard subscriptions to agent output
+const outputSubscriptions = new Map() // socketId -> Set of agent roles
+
+// Store terminal output history per agent (for replay when dashboard connects)
+const agentOutputBuffers = new Map() // agent role -> output string
+const MAX_OUTPUT_BUFFER = 500000 // 500KB per agent
+
 io.on('connection', (socket) => {
   const agentRole = socket.handshake.query.agent
   const isDashboard = socket.handshake.query.dashboard === 'true'
@@ -63,28 +70,96 @@ io.on('connection', (socket) => {
     `).all().reverse()
     socket.emit('message_history', recentMessages)
 
+    // Handle dashboard subscribing to agent output
+    socket.on('subscribe_output', ({ agent }) => {
+      let subs = outputSubscriptions.get(socket.id)
+      if (!subs) {
+        subs = new Set()
+        outputSubscriptions.set(socket.id, subs)
+      }
+
+      // Only send history if this is a NEW subscription (prevents duplicates from React StrictMode)
+      const isNewSubscription = !subs.has(agent)
+      subs.add(agent)
+
+      if (isNewSubscription) {
+        console.log(`[Broker] Dashboard subscribed to ${agent} output`)
+
+        // Send historical output buffer if available
+        const historicalOutput = agentOutputBuffers.get(agent)
+        if (historicalOutput) {
+          socket.emit('agent_output', { agent, data: historicalOutput })
+          console.log(`[Broker] Sent ${historicalOutput.length} bytes of history to dashboard for ${agent}`)
+        }
+      }
+    })
+
+    socket.on('unsubscribe_output', ({ agent }) => {
+      const subs = outputSubscriptions.get(socket.id)
+      if (subs) {
+        subs.delete(agent)
+      }
+      console.log(`[Broker] Dashboard unsubscribed from ${agent} output`)
+    })
+
+    // Handle input from dashboard to agent (for headless mode)
+    socket.on('agent_input', ({ agent, data }) => {
+      const agentInfo = activeAgents.get(agent)
+      if (agentInfo && agentInfo.socketId) {
+        io.to(agentInfo.socketId).emit('agent_input', { data })
+      }
+    })
+
+    // Handle request for agent info (terminal size, etc.)
+    socket.on('get_agent_info', ({ agent }, callback) => {
+      const agentInfo = activeAgents.get(agent)
+      if (agentInfo) {
+        callback({
+          role: agent,
+          headless: agentInfo.headless,
+          terminalSize: agentInfo.terminalSize,
+          status: agentInfo.status,
+          task: agentInfo.task,
+          waitingForInput: agentInfo.waitingForInput
+        })
+      } else {
+        callback(null)
+      }
+    })
+
+    socket.on('disconnect', () => {
+      outputSubscriptions.delete(socket.id)
+      console.log('[Broker] Dashboard disconnected')
+    })
+
     return
   }
 
-  console.log(`[Broker] ${agentRole} connected`)
+  const isTransient = socket.handshake.query.transient === 'true'
 
-  // Register agent
-  activeAgents.set(agentRole, {
-    role: agentRole,
-    connectedAt: new Date().toISOString(),
-    socketId: socket.id,
-    status: 'idle'
-  })
+  if (isTransient) {
+    console.log(`[Broker] ${agentRole} transient connection (send-message)`)
+  } else {
+    console.log(`[Broker] ${agentRole} connected`)
 
-  // Join agent-specific room and team room
-  socket.join(`agent:${agentRole}`)
-  socket.join('team')
+    // Register agent (only for persistent connections)
+    activeAgents.set(agentRole, {
+      role: agentRole,
+      connectedAt: new Date().toISOString(),
+      socketId: socket.id,
+      status: 'idle'
+    })
 
-  // Notify everyone (including dashboard) that agent joined
-  io.to('team').to('dashboard').emit('agent_joined', {
-    role: agentRole,
-    timestamp: new Date().toISOString()
-  })
+    // Join agent-specific room and team room
+    socket.join(`agent:${agentRole}`)
+    socket.join('team')
+
+    // Notify everyone (including dashboard) that agent joined
+    io.to('team').to('dashboard').emit('agent_joined', {
+      role: agentRole,
+      timestamp: new Date().toISOString()
+    })
+  }
 
   // Send current project to newly joined agent if one is set
   if (currentProject) {
@@ -96,6 +171,22 @@ io.on('connection', (socket) => {
       message_type: 'PROJECT_INIT',
       content: currentProject
     })
+  }
+
+  // Send any unread messages to this agent (catch-up for missed messages)
+  if (!isTransient) {
+    const unreadMessages = db.prepare(`
+      SELECT * FROM messages
+      WHERE (to_agent = ? OR to_agent = 'team') AND read = 0
+      ORDER BY created_at ASC
+    `).all(agentRole)
+
+    if (unreadMessages.length > 0) {
+      console.log(`[Broker] Sending ${unreadMessages.length} unread messages to ${agentRole}`)
+      for (const msg of unreadMessages) {
+        socket.emit('message', msg)
+      }
+    }
   }
 
   console.log(`[Broker] Active agents: ${[...activeAgents.keys()].join(', ')}`)
@@ -147,12 +238,69 @@ io.on('connection', (socket) => {
     if (callback) callback({ success: true, messageId: message.id })
   })
 
-  // Handle status updates
+  // Handle agent_ready event (sent on connect with headless info)
+  socket.on('agent_ready', ({ role, headless, terminalSize }) => {
+    const agent = activeAgents.get(role)
+    if (agent) {
+      agent.headless = headless
+      agent.terminalSize = terminalSize
+      console.log(`[Broker] ${role} ready - headless: ${headless}, size: ${terminalSize?.cols}x${terminalSize?.rows}`)
+      // Notify dashboard of agent info update
+      io.to('dashboard').emit('agent_info', { role, headless, terminalSize })
+    }
+  })
+
+  // Handle status updates (enhanced with task and waitingForInput)
+  socket.on('agent_status', ({ status, task, waitingForInput }) => {
+    const agent = activeAgents.get(agentRole)
+    if (agent) {
+      agent.status = status
+      if (task !== undefined) agent.task = task
+      if (waitingForInput !== undefined) agent.waitingForInput = waitingForInput
+      io.to('dashboard').emit('agent_status', {
+        role: agentRole,
+        status,
+        task: agent.task,
+        waitingForInput: agent.waitingForInput
+      })
+    }
+  })
+
+  // Legacy status_update handler for backwards compatibility
   socket.on('status_update', (status) => {
     const agent = activeAgents.get(agentRole)
     if (agent) {
       agent.status = status
       io.to('dashboard').emit('agent_status', { role: agentRole, status })
+    }
+  })
+
+  // Handle marking messages as read
+  socket.on('mark_read', ({ messageIds }) => {
+    if (messageIds && messageIds.length > 0) {
+      const placeholders = messageIds.map(() => '?').join(',')
+      db.prepare(`UPDATE messages SET read = 1 WHERE id IN (${placeholders})`).run(...messageIds)
+      console.log(`[Broker] Marked ${messageIds.length} messages as read for ${agentRole}`)
+    }
+  })
+
+  // Handle agent output streaming (for dashboard)
+  socket.on('agent_output', ({ data }) => {
+    // Store in output buffer for history replay
+    const existing = agentOutputBuffers.get(agentRole) || ''
+    const combined = existing + data
+    agentOutputBuffers.set(
+      agentRole,
+      combined.length > MAX_OUTPUT_BUFFER ? combined.slice(-MAX_OUTPUT_BUFFER) : combined
+    )
+
+    // Relay to all dashboards subscribed to this agent
+    let relayCount = 0
+    for (const [dashSocketId, subs] of outputSubscriptions) {
+      if (subs.has(agentRole)) {
+        io.to(dashSocketId).emit('agent_output', { agent: agentRole, data })
+        relayCount++
+      }
     }
   })
 
@@ -179,13 +327,18 @@ io.on('connection', (socket) => {
   })
 
   // Handle disconnect
-  socket.on('disconnect', () => {
-    activeAgents.delete(agentRole)
-    io.to('team').to('dashboard').emit('agent_left', {
-      role: agentRole,
-      timestamp: new Date().toISOString()
-    })
-    console.log(`[Broker] ${agentRole} disconnected`)
+  socket.on('disconnect', (reason) => {
+    if (!isTransient) {
+      activeAgents.delete(agentRole)
+      agentOutputBuffers.delete(agentRole) // Clear output buffer
+      io.to('team').to('dashboard').emit('agent_left', {
+        role: agentRole,
+        timestamp: new Date().toISOString()
+      })
+      console.log(`[Broker] ${agentRole} disconnected - reason: ${reason}`)
+    } else {
+      console.log(`[Broker] ${agentRole} transient disconnected`)
+    }
   })
 })
 

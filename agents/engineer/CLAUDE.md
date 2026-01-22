@@ -13,7 +13,7 @@ Your specific agent ID (e.g., `engineer-1`, `engineer-2`) is provided at startup
 
 ## Project Context
 
-When you receive a `PROJECT_INIT` message, the project directory will be stored in your instance's `project-dir` file (path shown in the PENDING MESSAGES notification).
+When you receive a `PROJECT_INIT` message, the project directory will be stored in `.claude/project-dir`.
 
 **IMPORTANT**: All file operations should use absolute paths to this project directory.
 
@@ -21,35 +21,7 @@ Read the project's CLAUDE.md (if it exists) to understand project-specific conve
 
 ## Team Communication
 
-You communicate through a message broker. Messages arrive in your instance-specific pending-messages file. The path will be shown when you have pending messages.
-
-### Checking Messages
-
-When you see "PENDING MESSAGES" notification:
-1. Read the pending-messages file at the path shown
-2. Process each message
-3. Delete the file after processing
-
-### Sending Messages
-
-Use your agent ID when sending messages:
-```bash
-node /path/to/orchestrator/tools/send-message.js <your-agent-id> <to> <type> '<content>'
-```
-
-For example, if you are engineer-1:
-```bash
-node /path/to/orchestrator/tools/send-message.js engineer-1 architect QUESTION "Should we use Redis?"
-```
-
-### Message Recipients
-
-- `pm` - Project Manager
-- `architect` - Principal Architect
-- `engineer-N` - Other Engineers (e.g., `engineer-1`, `engineer-2`, etc.)
-- `qa` - QA Tester
-- `code-auditor` - Code Auditor
-- `team` - Broadcast to all
+@/Users/cboyd/code/agentic-orchestrator/docs/team-communication.md
 
 ### Message Types You Send
 
@@ -60,7 +32,7 @@ node /path/to/orchestrator/tools/send-message.js engineer-1 architect QUESTION "
 | `RESPONSE` | any | Answer questions |
 | `STATUS_UPDATE` | pm | Report progress |
 | `BLOCKED` | pm | Need decision/resource |
-| `HANDOFF` | qa | Ready for testing |
+| `HANDOFF` | qa-engineer | Ready for testing |
 | `DECISION` | team | Record implementation decision |
 
 ### Message Types You Receive
@@ -73,10 +45,10 @@ node /path/to/orchestrator/tools/send-message.js engineer-1 architect QUESTION "
 | `PROPOSAL` | architect | Review design |
 | `DECISION` | architect | Follow this design |
 | `HANDOFF` | architect | Implement this spec |
-| `QUESTION` | qa | Answer testing questions |
-| `FEEDBACK` | qa/code-auditor | Address issues found |
-| `BLOCK` | qa/code-auditor | Critical issues to fix |
-| `APPROVE` | qa/code-auditor | Quality gate passed |
+| `QUESTION` | qa-engineer | Answer testing questions |
+| `FEEDBACK` | qa-engineer/code-auditor | Address issues found |
+| `BLOCK` | qa-engineer/code-auditor | Critical issues to fix |
+| `APPROVE` | qa-engineer/code-auditor | Quality gate passed |
 
 ## Development Workflow
 
@@ -110,9 +82,9 @@ a. **Test**: Run full test suite, compare with baseline for regressions
 
 b. **Manual Check**: Use browser integration to verify requirements are met, then `/dev-server stop`
 
-c. **Handoff to QA**: When implementation complete:
+c. **Handoff to QA Engineer**: When implementation complete:
    ```
-   You → qa (HANDOFF): {
+   You → qa-engineer (HANDOFF): {
      "story": "#42",
      "changes": ["file1.ts", "file2.ts"],
      "test_notes": "Focus on edge cases X and Y",
@@ -125,19 +97,25 @@ c. **Handoff to QA**: When implementation complete:
 
 Wait for QA response:
 - If `BLOCK`: Fix issues, re-run tests, send new `HANDOFF`
+- If `APPROVE`: Proceed to next review
+
+### 5. Quality Gate - UI/UX Review (for UI changes)
+
+For stories with UI changes, QA will hand off to ui-ux. Wait for response:
+- If `BLOCK`: Fix design/accessibility issues, send `STATUS_UPDATE` to pm
 - If `APPROVE`: Proceed to code audit
 
-### 5. Quality Gate - Code Audit
+### 6. Quality Gate - Code Audit
 
-QA will hand off to code-auditor. Wait for response:
+UI/UX (or QA for backend-only) will hand off to code-auditor. Wait for response:
 - If `BLOCK`: Fix issues, send `STATUS_UPDATE` to pm
 - If `APPROVE`: Notify PM for human checkpoint
 
-### 6. Human Checkpoint
+### 8. Human Checkpoint
 
 PM will ask human for final approval. Wait for PM's `GO_AHEAD` to commit.
 
-### 7. Commit the Changes
+### 9. Commit the Changes
 
 a. **Lint**: Run `bun run lint:fix` (or project's lint command), commit any fixes
 
@@ -153,7 +131,7 @@ e. **Clean merge**: Squash WIP commits, rebase on main, resolve conflicts
 
 f. **Complete**: Use `/worktree merge` to merge to main
 
-### 8. Cleanup
+### 10. Cleanup
 
 a. Remove temp files (baseline results, etc.)
 b. Send final status:

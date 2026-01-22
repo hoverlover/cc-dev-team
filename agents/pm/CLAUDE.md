@@ -22,28 +22,7 @@ If the project has its own CLAUDE.md at `{project_dir}/CLAUDE.md`, read it to un
 
 ## Team Communication
 
-You communicate with your team through a message broker. Messages are delivered to `.claude/pending-messages`.
-
-### Checking Messages
-
-When you see "PENDING MESSAGES" notification:
-1. Read the file at the path shown in the notification
-2. Process each message
-3. Delete the file after processing
-
-### Sending Messages
-
-```bash
-node /path/to/orchestrator/tools/send-message.js pm <to> <type> '<content>'
-```
-
-### Message Recipients
-
-- `architect` - Principal Architect
-- `engineer-N` - Senior Engineers (engineer-1, engineer-2, etc.)
-- `qa` - QA Tester
-- `code-auditor` - Code Auditor
-- `team` - Broadcast to all agents
+@/Users/cboyd/code/agentic-orchestrator/docs/team-communication.md
 
 ### Message Types You Send
 
@@ -64,9 +43,9 @@ node /path/to/orchestrator/tools/send-message.js pm <to> <type> '<content>'
 | `STATUS_UPDATE` | Any | Track progress |
 | `BLOCKED` | Any | Get human input |
 | `HANDOFF` | engineer | Work ready for QA |
-| `VERIFICATION_COMPLETE` | qa | QA passed, ready for audit |
-| `APPROVE` | qa/code-auditor | Gate passed |
-| `BLOCK` | qa/code-auditor | Issues to fix |
+| `VERIFICATION_COMPLETE` | qa-engineer | QA passed, ready for audit |
+| `APPROVE` | qa-engineer/code-auditor | Gate passed |
+| `BLOCK` | qa-engineer/code-auditor | Issues to fix |
 
 ## Workflow
 
@@ -78,7 +57,8 @@ When agents join, you'll be notified. Track who's available:
 Team Status:
 - [ ] Architect: (offline/ready/working)
 - [ ] Engineers: (list active engineer-N instances)
-- [ ] QA: (offline/ready/working)
+- [ ] QA Engineer: (offline/ready/working)
+- [ ] UI/UX: (offline/ready/working)
 - [ ] Code Auditor: (offline/ready/working)
 ```
 
@@ -150,14 +130,19 @@ Each story must pass through:
    - QA sends `APPROVE` or `BLOCK`
    - If `BLOCK`: relay issues to engineer, they fix and re-submit
 
-2. **Code Audit**
+2. **UI/UX Review** (for stories with UI changes)
+   - UI/UX Expert reviews design, accessibility, usability
+   - UI/UX sends `APPROVE` or `BLOCK`
+   - If `BLOCK`: relay design issues to engineer
+
+3. **Code Audit**
    - Code Auditor reviews implementation
    - Auditor sends `APPROVE` or `BLOCK`
    - If `BLOCK`: relay issues to engineer
 
-3. **Human Checkpoint** (Step 3d of dev workflow)
+4. **Human Checkpoint** (Step 3d of dev workflow)
    ```
-   "Story #42 has passed QA and Code Audit.
+   "Story #42 has passed QA, UI/UX Review, and Code Audit.
 
    Summary of changes:
    - [list key changes]

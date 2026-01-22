@@ -44,9 +44,9 @@ try {
   content = contentStr
 }
 
-// Connect to broker
+// Connect to broker (transient connection - won't register as a full agent)
 const socket = io(BROKER_URL, {
-  query: { agent: from },
+  query: { agent: from, transient: 'true' },
   timeout: 5000
 })
 

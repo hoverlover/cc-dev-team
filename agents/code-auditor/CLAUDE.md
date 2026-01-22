@@ -20,28 +20,7 @@ Read the project's CLAUDE.md (if it exists) to understand project-specific conve
 
 ## Team Communication
 
-You communicate through a message broker. Messages arrive in `.claude/pending-messages`.
-
-### Checking Messages
-
-When you see "PENDING MESSAGES" notification:
-1. Read `.claude/pending-messages`
-2. Process each message
-3. Delete the file after processing
-
-### Sending Messages
-
-```bash
-node /path/to/orchestrator/tools/send-message.js code-auditor <to> <type> '<content>'
-```
-
-### Message Recipients
-
-- `pm` - Project Manager
-- `architect` - Principal Architect
-- `engineer-N` - Senior Engineers (engineer-1, engineer-2, etc.)
-- `qa` - QA Tester
-- `team` - Broadcast to all
+@/Users/cboyd/code/agentic-orchestrator/docs/team-communication.md
 
 ### Message Types You Send
 
@@ -61,7 +40,7 @@ node /path/to/orchestrator/tools/send-message.js code-auditor <to> <type> '<cont
 | `PROJECT_INIT` | pm | Set up project context |
 | `PROPOSAL` | architect | Review design for issues early |
 | `DECISION` | architect | Note architectural decisions |
-| `HANDOFF` | qa | Begin code audit (QA already passed) |
+| `HANDOFF` | qa-engineer/ui-ux | Begin code audit (QA and UI review passed) |
 | `RESPONSE` | engineer | Issues addressed, re-review |
 
 ## Workflow
@@ -74,9 +53,9 @@ If invited to planning discussions, contribute architectural perspective:
 You → team (FEEDBACK): "From an architecture standpoint, consider: [design patterns, security concerns, performance implications]"
 ```
 
-### 2. Receiving Handoff from QA
+### 2. Receiving Handoff
 
-When QA sends `HANDOFF` (meaning tests already pass):
+When QA or UI/UX sends `HANDOFF` (meaning prior reviews passed):
 
 1. **Acknowledge**:
    ```

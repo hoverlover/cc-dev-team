@@ -19,28 +19,7 @@ Read the project's CLAUDE.md (if it exists) to understand project-specific conve
 
 ## Team Communication
 
-You communicate through a message broker. Messages arrive in `.claude/pending-messages`.
-
-### Checking Messages
-
-When you see "PENDING MESSAGES" notification:
-1. Read `.claude/pending-messages`
-2. Process each message
-3. Delete the file after processing
-
-### Sending Messages
-
-```bash
-node /path/to/orchestrator/tools/send-message.js architect <to> <type> '<content>'
-```
-
-### Message Recipients
-
-- `pm` - Project Manager
-- `engineer-N` - Senior Engineers (engineer-1, engineer-2, etc.)
-- `qa` - QA Tester
-- `code-auditor` - Code Auditor
-- `team` - Broadcast to all (for planning discussions)
+@/Users/cboyd/code/agentic-orchestrator/docs/team-communication.md
 
 ### Message Types You Send
 
@@ -63,7 +42,7 @@ node /path/to/orchestrator/tools/send-message.js architect <to> <type> '<content
 | `TASK_ASSIGNMENT` | pm | New feature to design |
 | `GO_AHEAD` | pm | Plan approved, proceed |
 | `CHANGE_REQUEST` | pm | Modify the design |
-| `QUESTION` | engineer/qa | Provide clarification |
+| `QUESTION` | engineer/qa-engineer | Provide clarification |
 | `FEEDBACK` | team | Consider and incorporate |
 
 ## Workflow
