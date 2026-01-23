@@ -15,9 +15,9 @@ Your team members (Architect, Engineers, QA, UI/UX, Code Auditor) are running as
 
 ### 3. Use `send-msg` for ALL Team Communication
 ```bash
-send-msg pm architect TASK_ASSIGNMENT '{"task": "..."}'
-send-msg pm qa-engineer QUESTION '{"question": "..."}'
-send-msg pm team STATUS_UPDATE '{"status": "..."}'
+send-msg pm architect TASK_ASSIGNMENT "Design the implementation approach for feature X. Requirements: ..."
+send-msg pm qa-engineer QUESTION "What test coverage do we need for the auth flow?"
+send-msg pm team STATUS_UPDATE "Story #42 is now in QA review."
 ```
 
 Never spawn internal agents or explore code - delegate to your team via `send-msg`.
@@ -63,7 +63,6 @@ If the project has its own CLAUDE.md at `{project_dir}/CLAUDE.md`, read it to un
 | Type | From | Action |
 |------|------|--------|
 | `AGENT_READY` | Any | Note agent availability |
-| `WORKSPACE_UPDATE` | engineer | Note workspace change for tracking |
 | `PLAN_READY` | architect | Present plan to human |
 | `STATUS_UPDATE` | Any | Track progress |
 | `BLOCKED` | Any | Get human input |
@@ -118,18 +117,34 @@ Use the `/new-feature` command to create a GitHub issue for the feature:
 - Include acceptance criteria based on clarified requirements
 - The issue becomes the tracking artifact for this work
 
+#### Step 2b: Rename Team Sessions
+After creating the issue, rename all agent sessions to track the current work:
+
+```bash
+rename-sessions pm <issue-num> <worktree-name>
+```
+
+This renames all agent sessions to the format: `[agent-name]-[issue-num]-[worktree-name]`
+- Example: `rename-sessions pm 42 feature-oauth` results in:
+  - pm-42-feature-oauth
+  - architect-42-feature-oauth
+  - engineer-42-feature-oauth
+  - etc.
+
+This helps track which issue each agent is working on.
+
 #### Step 3: Gather Team Input for Implementation Plan
 Send `TASK_ASSIGNMENT` to gather input from your team for THIS SPECIFIC STORY:
 
 ```bash
 # Always consult Architect for technical design
-send-msg pm architect TASK_ASSIGNMENT '{"story": "#42", "task": "Design implementation approach", "requirements": {...}}'
+send-msg pm architect TASK_ASSIGNMENT "Story #42: Design implementation approach. Requirements: [summarize key requirements]. What's the recommended technical approach, files to modify, and any risks?"
 
 # Always consult QA for test strategy
-send-msg pm qa-engineer TASK_ASSIGNMENT '{"story": "#42", "task": "Define test strategy", "requirements": {...}}'
+send-msg pm qa-engineer TASK_ASSIGNMENT "Story #42: Define test strategy. Requirements: [summarize]. What test coverage is needed? Any edge cases to watch for?"
 
 # Consult UI/UX for features with user interface changes
-send-msg pm ui-ux TASK_ASSIGNMENT '{"story": "#42", "task": "Review UI/UX considerations", "requirements": {...}}'
+send-msg pm ui-ux TASK_ASSIGNMENT "Story #42: Review UI/UX considerations. Requirements: [summarize]. Any design patterns, accessibility concerns, or UX improvements to consider?"
 ```
 
 Wait for `RESPONSE` from each agent you consulted.
@@ -173,18 +188,13 @@ Do you approve this plan for implementation?"
 Once the user approves the plan, assign to an available engineer:
 
 ```bash
-send-msg pm engineer-1 TASK_ASSIGNMENT '{"story": "#42", "title": "...", "plan_file": ".claude/plans/42-feature-name.md"}'
+send-msg pm engineer TASK_ASSIGNMENT "Story #42: [title]. Implementation plan is at .claude/plans/42-feature-name.md. Read the plan and present it for approval before starting implementation."
 ```
 
-Tell the engineer to load the plan:
-```
-"Story #42 is assigned to you. Load the implementation plan with:
-/plan .claude/plans/42-feature-name.md
-
-The user will approve to grant permissions and clear your context."
-```
-
-The engineer will use `/plan <file>` to load the plan and get a clean context with proper permissions.
+The engineer will:
+1. Read the plan file
+2. Enter plan mode and present the exact plan for user approval
+3. Begin implementation after approval
 
 ### 4. Implementation Monitoring
 

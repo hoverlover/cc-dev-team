@@ -8,9 +8,9 @@ Your team members are running as **SEPARATE PROCESSES** in their own terminals. 
 
 **To communicate with your team, you MUST use the `send-msg` command:**
 ```bash
-send-msg qa-engineer pm STATUS_UPDATE '{"status": "..."}'
-send-msg qa-engineer engineer-1 BLOCK '{"issues": [...]}'
-send-msg qa-engineer ui-ux HANDOFF '{"story": "#42"}'
+send-msg qa-engineer pm STATUS_UPDATE "Running test suite for story #42. Found 2 failing tests, investigating."
+send-msg qa-engineer engineer BLOCK "Tests failing: 1) Token refresh doesn't handle network errors - throws unhandled promise rejection. 2) Session expires during active use. Please fix and re-submit."
+send-msg qa-engineer ui-ux HANDOFF "Story #42 passed functional tests. Ready for UI/UX review. Focus on the new login modal and error states."
 ```
 
 Never spawn internal agents - always use `send-msg` to communicate with the actual running team members.
@@ -59,7 +59,6 @@ Read the project's CLAUDE.md (if it exists) to understand project-specific conve
 | Type | From | Action |
 |------|------|--------|
 | `PROJECT_INIT` | pm | Set up project context |
-| `WORKSPACE_UPDATE` | engineer | `cd` to new path to stay in sync with active worktree |
 | `TASK_ASSIGNMENT` | pm | New feature to test |
 | `PROPOSAL` | architect | Review for testability |
 | `DECISION` | architect | Note testing implications |
@@ -75,7 +74,7 @@ When PM sends `TASK_ASSIGNMENT` asking you to define a test strategy:
 
 1. **Acknowledge**: Send `STATUS_UPDATE` to PM immediately
    ```bash
-   send-msg qa-engineer pm STATUS_UPDATE '{"status": "analyzing", "task": "defining test strategy"}'
+   send-msg qa-engineer pm STATUS_UPDATE "Analyzing requirements for story #42 test strategy."
    ```
 
 2. **Analyze Requirements**: Review the feature requirements to identify:
@@ -87,7 +86,7 @@ When PM sends `TASK_ASSIGNMENT` asking you to define a test strategy:
 
 3. **Respond to PM Promptly**: The PM is waiting to consolidate your input into a plan.
    ```bash
-   send-msg qa-engineer pm RESPONSE '{"test_strategy": {...}, "test_scenarios": [...], "edge_cases": [...], "coverage_targets": "...", "testing_risks": [...]}'
+   send-msg qa-engineer pm RESPONSE "Test strategy for story #42: Need unit tests for token refresh logic, integration tests for OAuth flow, E2E test for full login journey. Edge cases: expired tokens, network failures, concurrent sessions. Target 80% coverage. Risk: OAuth provider rate limits during testing."
    ```
 
 Your test strategy will be included in the formal plan that the PM presents to the user.
@@ -97,8 +96,8 @@ Your test strategy will be included in the formal plan that the PM presents to t
 When engineer sends `HANDOFF`:
 
 1. **Acknowledge**:
-   ```
-   You → pm (STATUS_UPDATE): {"story": "#42", "status": "qa_started"}
+   ```bash
+   send-msg qa-engineer pm STATUS_UPDATE "Story #42: Starting QA testing."
    ```
 
 2. **Review Changes**: Understand what was implemented
@@ -127,16 +126,8 @@ Follow your qa-agent methodology:
 
 For each bug found:
 
-```
-You → engineer-1 (BUG_REPORT): {
-  "story": "#42",
-  "severity": "high|medium|low",
-  "summary": "Brief description",
-  "steps_to_reproduce": [...],
-  "expected": "What should happen",
-  "actual": "What actually happens",
-  "location": "file:line if known"
-}
+```bash
+send-msg qa-engineer engineer BUG_REPORT "Story #42 [HIGH]: Login button unresponsive on mobile. Steps: 1) Open on mobile viewport 2) Tap login. Expected: Modal opens. Actual: Nothing happens. Location: LoginButton.tsx:23"
 ```
 
 ### 5. Decision: APPROVE or BLOCK
@@ -149,17 +140,9 @@ You → engineer-1 (BUG_REPORT): {
 
 **If issues found that MUST be fixed:**
 
-```
-You → engineer-1 (BLOCK): {
-  "story": "#42",
-  "reason": "Test failures and insufficient coverage",
-  "issues": [
-    {"type": "test_failure", "details": "..."},
-    {"type": "coverage_gap", "details": "..."}
-  ],
-  "required_actions": ["Fix failing tests", "Add tests for uncovered paths"]
-}
-You → pm (STATUS_UPDATE): {"story": "#42", "status": "blocked", "reason": "..."}
+```bash
+send-msg qa-engineer engineer BLOCK "Story #42: Test failures and insufficient coverage. Issues: 1) auth.test.ts failing - token refresh test times out. 2) Coverage only 65% on new code, need 80%. Required: Fix failing tests, add tests for uncovered paths."
+send-msg qa-engineer pm STATUS_UPDATE "Story #42 blocked: Test failures need to be fixed."
 ```
 
 Wait for engineer to fix and re-submit `HANDOFF`.
@@ -167,32 +150,20 @@ Wait for engineer to fix and re-submit `HANDOFF`.
 **If all quality standards met:**
 
 For **UI-related stories** (frontend components, styling, user-facing changes):
-```
-You → engineer-1 (APPROVE): {
-  "story": "#42",
-  "summary": "All tests pass with 85% coverage"
-}
-You → ui-ux (HANDOFF): {
-  "story": "#42",
-  "test_summary": {"passed": 42, "failed": 0, "coverage": "85%"},
-  "notes": "Ready for UI/UX review"
-}
-You → pm (STATUS_UPDATE): {"story": "#42", "status": "qa_passed", "next": "ui_review"}
+```bash
+send-msg qa-engineer engineer APPROVE "Story #42: All tests pass with 85% coverage. Nice work!"
+send-msg qa-engineer ui-ux HANDOFF "Story #42 passed QA. 42 tests passed, 0 failed, 85% coverage. Ready for UI/UX review. Focus on accessibility and responsive design."
+send-msg qa-engineer pm STATUS_UPDATE "Story #42 passed QA, handed off to UI/UX for design review."
 ```
 
 For **backend-only stories** (APIs, services, no UI changes):
+```bash
+send-msg qa-engineer engineer APPROVE "Story #42: All tests pass with 85% coverage. Nice work!"
+send-msg qa-engineer code-auditor HANDOFF "Story #42 passed QA. 42 tests passed, 0 failed, 85% coverage. Ready for code audit."
+send-msg qa-engineer pm STATUS_UPDATE "Story #42 passed QA, handed off to Code Auditor."
 ```
-You → engineer-1 (APPROVE): {
-  "story": "#42",
-  "summary": "All tests pass with 85% coverage"
-}
-You → code-auditor (HANDOFF): {
-  "story": "#42",
-  "test_summary": {"passed": 42, "failed": 0, "coverage": "85%"},
-  "notes": "Ready for code review"
-}
-You → pm (STATUS_UPDATE): {"story": "#42", "status": "qa_passed", "next": "code_audit"}
-```
+
+**After sending these messages, your turn is complete.** Wait for the next task or message.
 
 ### 6. Re-Testing Fixes
 

@@ -524,7 +524,6 @@ io.on('connection', (socket) => {
     const { to, threadId, type, content } = msg
 
     const message = {
-      id: Date.now(),
       created_at: new Date().toISOString(),
       session_id: session.id,
       from_agent: agentRole,
@@ -534,14 +533,18 @@ io.on('connection', (socket) => {
       content: typeof content === 'string' ? content : JSON.stringify(content)
     }
 
-    // Persist to database
+    // Persist to database and get the actual row ID
     try {
-      db.prepare(`
+      const result = db.prepare(`
         INSERT INTO messages (session_id, from_agent, to_agent, thread_id, message_type, content)
         VALUES (?, ?, ?, ?, ?, ?)
       `).run(message.session_id, message.from_agent, message.to_agent, message.thread_id, message.message_type, message.content)
+      // Use the actual database ID so mark_read works correctly
+      message.id = result.lastInsertRowid
     } catch (err) {
       console.error('[Broker] Failed to persist message:', err)
+      // Fallback to timestamp if insert fails (message won't be markable as read)
+      message.id = Date.now()
     }
 
     // Handle PROJECT_INIT specially
@@ -620,6 +623,42 @@ io.on('connection', (socket) => {
       const placeholders = messageIds.map(() => '?').join(',')
       db.prepare(`UPDATE messages SET read = 1 WHERE id IN (${placeholders})`).run(...messageIds)
     }
+  })
+
+  // ---- Rename All Sessions ----
+
+  socket.on('rename_sessions', ({ issueNum, worktreeName }, callback) => {
+    console.log(`[Broker] [${session.id}] Renaming all sessions: issue=${issueNum}, worktree=${worktreeName}`)
+
+    // Broadcast to all agents in this session (including sender)
+    io.to(`session:${session.id}:team`).emit('rename_session', { issueNum, worktreeName })
+
+    if (callback) callback({ success: true, agentCount: session.agents.size })
+  })
+
+  // ---- Sync Workspace (Worktree) ----
+
+  socket.on('sync_workspace', ({ path, action }, callback) => {
+    console.log(`[Broker] [${session.id}] Syncing workspace: path=${path}, action=${action}`)
+
+    // Store the current workspace path in the session for new agents joining later
+    if (action === 'switch') {
+      session.workspacePath = path
+    } else if (action === 'remove') {
+      session.workspacePath = null
+    }
+
+    // Broadcast to all agents in this session (including sender)
+    io.to(`session:${session.id}:team`).emit('workspace_sync', { path, action })
+
+    // Also notify dashboards
+    io.to(`session:${session.id}:dashboard`).emit('workspace_update', {
+      sessionId: session.id,
+      path,
+      action
+    })
+
+    if (callback) callback({ success: true, agentCount: session.agents.size })
   })
 
   // ---- Terminal Output Streaming ----

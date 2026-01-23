@@ -112,8 +112,9 @@ let waitingForInput = false
 // Patterns to detect status from Claude Code output
 const STATUS_PATTERNS = {
   // Whimsical thinking indicators with full task description
-  // Captures: "* Adding settings UI toggle... (esc to interrupt)" → "Adding settings UI toggle"
-  thinkingWhimsical: /[*✱]\s*(.+?)\.{3}\s*\(esc to interrupt\)/i,
+  // Captures: "* Adding settings UI toggle... (esc to interrupt · 37s · ↓ 2.1k tokens)" → "Adding settings UI toggle"
+  // Note: Claude includes timing info after "esc to interrupt", so we don't require closing paren
+  thinkingWhimsical: /[*✱]\s*(.+?)\.{3}\s*\(esc to interrupt/i,
   thinking: /[●•]\s*Thinking|Thinking\.\.\./i,
   toolUse: /[●•]\s*(Bash|Read|Edit|Write|Glob|Grep|Task|WebFetch|WebSearch|TodoWrite|NotebookEdit)\s*\(/i,
   waiting: /Waiting\.\.\.|waiting for|Press enter/i,
@@ -133,9 +134,19 @@ function parseStatusFromOutput(data) {
   // This prevents old output from triggering false positives
   const recentData = data.length > 500 ? data.slice(-500) : data
 
-  // Check for idle prompt FIRST - this is the most definitive state
-  // The ❯ or > prompt at end means Claude is ready for input (not waiting for permission)
-  if (STATUS_PATTERNS.idle.test(recentData) && !/❯\s*\d+\./.test(recentData)) {
+  // Find the position of the last idle prompt and last activity indicator
+  // Whichever comes last determines the current state
+  const idleMatch = recentData.match(/[\r\n]([❯>])\s*$/m) || recentData.match(/[\r\n]([❯>])\s*[\r\n]*$/m)
+  const whimsicalMatch = recentData.match(STATUS_PATTERNS.thinkingWhimsical)
+  const completionMatch = recentData.match(STATUS_PATTERNS.complete)
+
+  // Check for idle prompt - use last 100 chars for more accuracy
+  const veryRecent = data.length > 100 ? data.slice(-100) : data
+  const hasIdlePrompt = /[\r\n][❯>]\s*$/.test(veryRecent) || /[\r\n][❯>]\s*[\r\n]*$/.test(veryRecent)
+
+  // If we see an idle prompt at the very end, we're definitely idle
+  // (This takes precedence over old whimsical text in the buffer)
+  if (hasIdlePrompt && !/❯\s*\d+\./.test(veryRecent)) {
     waitingForInput = false
     currentStatus = 'idle'
     currentTask = ''
@@ -143,15 +154,32 @@ function parseStatusFromOutput(data) {
     return { status: 'idle', task: '', waitingForInput: false }
   }
 
+  // Also check for completion + idle pattern (e.g., "Brewed for X" followed by prompt)
+  if (completionMatch && idleMatch) {
+    const completionPos = recentData.lastIndexOf(completionMatch[0])
+    const idlePos = recentData.lastIndexOf(idleMatch[0])
+    if (idlePos > completionPos) {
+      waitingForInput = false
+      currentStatus = 'idle'
+      currentTask = ''
+      debug(`Detected completion followed by idle`)
+      return { status: 'idle', task: '', waitingForInput: false }
+    }
+  }
+
   // Check for whimsical thinking indicators with full task description
   // e.g., "* Adding settings UI toggle... (esc to interrupt)" → "Adding settings UI toggle..."
-  const whimsicalMatch = recentData.match(STATUS_PATTERNS.thinkingWhimsical)
   if (whimsicalMatch) {
-    waitingForInput = false
-    currentStatus = 'thinking'
-    currentTask = whimsicalMatch[1].trim() + '...'  // Full task description
-    debug(`Detected whimsical thinking: ${currentTask}`)
-    return { status: 'thinking', task: currentTask, waitingForInput: false }
+    // But only if there's no idle prompt after it
+    const whimsicalPos = recentData.lastIndexOf(whimsicalMatch[0])
+    const idleInRecent = recentData.slice(whimsicalPos).match(/[\r\n][❯>]\s*/)
+    if (!idleInRecent) {
+      waitingForInput = false
+      currentStatus = 'thinking'
+      currentTask = whimsicalMatch[1].trim() + '...'  // Full task description
+      debug(`Detected whimsical thinking: ${currentTask}`)
+      return { status: 'thinking', task: currentTask, waitingForInput: false }
+    }
   }
 
   // Check for tool use
@@ -353,7 +381,7 @@ const ptyProcess = pty.spawn(claudePath, fullClaudeArgs, {
 
 const tracker = new InputTracker()
 let lastInjected = 0
-const COOLDOWN_MS = 60000
+const COOLDOWN_MS = 10000
 const CHECK_INTERVAL_MS = 5000
 const IDLE_TIMEOUT_MS = 2000
 
@@ -467,6 +495,35 @@ socket.on('message', (message) => {
   messageQueue.push(message)
 })
 
+// Handle session rename requests
+socket.on('rename_session', ({ issueNum, worktreeName }) => {
+  const sessionName = `${agentId}-${issueNum}-${worktreeName}`
+  debug(`Renaming session to: ${sessionName}`)
+  // Inject the rename command directly (bypasses message queue)
+  ptyProcess.write(`/rename ${sessionName}`)
+  setTimeout(() => {
+    ptyProcess.write('\r')
+  }, 150)
+})
+
+// Handle workspace sync requests (worktree changes)
+socket.on('workspace_sync', ({ path, action }) => {
+  debug(`Workspace sync: action=${action}, path=${path}`)
+  // Inject cd command to change directory
+  if (action === 'switch' && path) {
+    ptyProcess.write(`cd "${path}"`)
+    setTimeout(() => {
+      ptyProcess.write('\r')
+    }, 150)
+  } else if (action === 'remove' && path) {
+    // Switch back to the specified path (usually original project dir)
+    ptyProcess.write(`cd "${path}"`)
+    setTimeout(() => {
+      ptyProcess.write('\r')
+    }, 150)
+  }
+})
+
 // Message injection
 function inject(text) {
   ptyProcess.write(text)
@@ -480,22 +537,13 @@ function inject(text) {
 
 function formatMessageForInjection(msg) {
   let content = msg.content
-  if (typeof content === 'string') {
-    try {
-      const parsed = JSON.parse(content)
-      if (parsed.message) content = parsed.message
-      else if (parsed.task) content = parsed.task
-      else if (parsed.description) content = parsed.description
-      else content = JSON.stringify(parsed)
-    } catch {
-      // Keep as-is
-    }
-  } else if (typeof content === 'object') {
-    if (content.message) content = content.message
-    else if (content.task) content = content.task
-    else if (content.description) content = content.description
-    else content = JSON.stringify(content)
+
+  // If content is an object, stringify it (backwards compatibility)
+  if (typeof content === 'object' && content !== null) {
+    content = JSON.stringify(content)
   }
+
+  // Clean up for single-line injection
   content = String(content).replace(/\n/g, ' ').replace(/\r/g, '')
   return `[MESSAGE from ${msg.from_agent}] [${msg.message_type}]: ${content}`
 }

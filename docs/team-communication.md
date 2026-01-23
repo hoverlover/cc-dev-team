@@ -16,10 +16,34 @@ Messages from other agents appear as `[MESSAGE from <agent>] [<type>]: <content>
 ## Sending Messages
 
 ```bash
-send-msg <your-agent-id> <to> <type> '<content>'
+send-msg <your-agent-id> <to> <type> "<content>"
 ```
 
 Replace `<your-agent-id>` with your agent ID (e.g., `pm`, `architect`, `engineer`, `qa-engineer`, `ui-ux`, `code-auditor`).
+
+## Message Format
+
+**Use plain text for message content.** The message type (QUESTION, RESPONSE, etc.) signals intent - the content should be natural language.
+
+Examples:
+```bash
+# Asking a question
+send-msg pm architect QUESTION "We need swipe-to-dismiss for mobile notifications. The X button uses hover which doesn't work on mobile. What's the best approach? Any React libraries you'd recommend?"
+
+# Responding
+send-msg architect pm RESPONSE "I recommend react-swipeable for gesture handling. Use Framer Motion for the dismiss animation. Key files: NotificationItem.tsx, useSwipeGesture.ts. Watch out for interrupted gestures."
+
+# Assigning a task
+send-msg pm engineer TASK_ASSIGNMENT "Implement swipe-to-dismiss for notifications per story #42. Plan is at .claude/plans/42-swipe-dismiss.md. Focus on mobile touch handling."
+
+# Reporting status
+send-msg engineer pm STATUS_UPDATE "Swipe gesture detection working. Now implementing the animation. About 60% complete."
+
+# Handing off work
+send-msg engineer qa-engineer HANDOFF "Swipe-to-dismiss is ready for testing. Test on mobile viewports. Edge cases: rapid swipes, interrupted gestures, swipe threshold."
+```
+
+**Do NOT use JSON** for message content unless absolutely necessary (e.g., PROJECT_INIT with structured paths).
 
 ## Message Recipients
 
@@ -36,7 +60,6 @@ Replace `<your-agent-id>` with your agent ID (e.g., `pm`, `architect`, `engineer
 | Type | Purpose |
 |------|---------|
 | `PROJECT_INIT` | Set project directory for all agents |
-| `WORKSPACE_UPDATE` | Notify team of workspace/worktree change |
 | `TASK_ASSIGNMENT` | Assign work to an agent |
 | `GO_AHEAD` | Approval to proceed |
 | `STATUS_UPDATE` | Report progress |
@@ -52,14 +75,16 @@ Replace `<your-agent-id>` with your agent ID (e.g., `pm`, `architect`, `engineer
 
 ## Workspace Synchronization
 
-When any agent changes their working directory (especially when using `/worktree`), they MUST broadcast to the team:
+When an engineer creates a worktree or changes the working directory, use the `sync-workspace` tool to automatically sync all agents:
 
 ```bash
-send-msg <your-id> team WORKSPACE_UPDATE '{"path": "/new/working/directory", "action": "switch|remove"}'
+# After creating/switching to a worktree
+sync-workspace engineer switch /path/to/worktree
+
+# After removing a worktree (switch back to original)
+sync-workspace engineer remove /path/to/original/project
 ```
 
-**When you receive a WORKSPACE_UPDATE:**
-1. If `action` is `switch`: Change to the new directory with `cd <path>`
-2. If `action` is `remove`: Change back to the original project directory
+This automatically runs `cd` on all agents in the session - no manual action needed by receiving agents.
 
-This keeps all agents synchronized so they can review each other's work in the correct location.
+**Note:** Only engineers typically need to use this (when creating worktrees). Other agents will be synced automatically.

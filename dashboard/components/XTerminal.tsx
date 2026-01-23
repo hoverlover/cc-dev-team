@@ -32,6 +32,8 @@ const XTerminal = forwardRef<XTerminalHandle, XTerminalProps>(({ className, onDa
   const [isReady, setIsReady] = useState(false)
   // Track whether auto-scroll is enabled (disabled when user scrolls up)
   const autoScrollRef = useRef(true)
+  // Track if we're programmatically scrolling (to ignore scroll events we trigger)
+  const isProgrammaticScrollRef = useRef(false)
 
   useImperativeHandle(actualRef, () => ({
     write: (data: string) => {
@@ -39,7 +41,10 @@ const XTerminal = forwardRef<XTerminalHandle, XTerminalProps>(({ className, onDa
         terminalRef.current.write(data)
         // Only auto-scroll if user hasn't scrolled up
         if (autoScrollRef.current) {
+          isProgrammaticScrollRef.current = true
           terminalRef.current.scrollToBottom()
+          // Reset flag after a short delay to allow scroll event to fire
+          setTimeout(() => { isProgrammaticScrollRef.current = false }, 50)
         }
       }
     },
@@ -49,7 +54,9 @@ const XTerminal = forwardRef<XTerminalHandle, XTerminalProps>(({ className, onDa
     focus: () => {
       terminalRef.current?.focus()
       if (autoScrollRef.current) {
+        isProgrammaticScrollRef.current = true
         terminalRef.current?.scrollToBottom()
+        setTimeout(() => { isProgrammaticScrollRef.current = false }, 50)
       }
     },
     getBuffer: () => {
@@ -66,7 +73,9 @@ const XTerminal = forwardRef<XTerminalHandle, XTerminalProps>(({ className, onDa
     },
     scrollToBottom: () => {
       autoScrollRef.current = true
+      isProgrammaticScrollRef.current = true
       terminalRef.current?.scrollToBottom()
+      setTimeout(() => { isProgrammaticScrollRef.current = false }, 50)
     },
   }), [isReady])
 
@@ -124,21 +133,33 @@ const XTerminal = forwardRef<XTerminalHandle, XTerminalProps>(({ className, onDa
     setIsReady(true)
 
     // Handle scroll events to manage auto-scroll behavior
-    // Disable auto-scroll when user scrolls up, re-enable when they scroll to bottom
+    // Disable auto-scroll when user scrolls up, re-enable only when they explicitly scroll to very bottom
+    let userScrolledUp = false
+
     terminal.onScroll(() => {
+      // Ignore scroll events triggered by our own code
+      if (isProgrammaticScrollRef.current) {
+        return
+      }
+
       const buffer = terminal.buffer.active
       const viewportY = buffer.viewportY
       const baseY = buffer.baseY
 
-      // Check if we're at the bottom (viewportY equals baseY means we're at the bottom)
-      const isAtBottom = viewportY >= baseY
+      // Calculate how far from bottom we are
+      const distanceFromBottom = baseY - viewportY
 
-      if (isAtBottom) {
-        // User scrolled back to bottom, re-enable auto-scroll
-        autoScrollRef.current = true
-      } else {
-        // User scrolled up, disable auto-scroll
+      // If user scrolled up at all, mark it and disable auto-scroll
+      if (distanceFromBottom > 0) {
+        userScrolledUp = true
         autoScrollRef.current = false
+      }
+
+      // Only re-enable auto-scroll if user manually scrolled all the way back to bottom
+      // AND they had previously scrolled up (prevents false positives on initial load)
+      if (userScrolledUp && distanceFromBottom === 0) {
+        autoScrollRef.current = true
+        userScrolledUp = false
       }
     })
 
@@ -160,7 +181,9 @@ const XTerminal = forwardRef<XTerminalHandle, XTerminalProps>(({ className, onDa
         onData(data)
         // Scroll to bottom when user types (and re-enable auto-scroll)
         autoScrollRef.current = true
+        isProgrammaticScrollRef.current = true
         terminal.scrollToBottom()
+        setTimeout(() => { isProgrammaticScrollRef.current = false }, 50)
       })
     }
 

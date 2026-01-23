@@ -8,9 +8,9 @@ Your team members are running as **SEPARATE PROCESSES** in their own terminals. 
 
 **To communicate with your team, you MUST use the `send-msg` command:**
 ```bash
-send-msg architect pm RESPONSE '{"answer": "..."}'
-send-msg architect engineer-1 HANDOFF '{"spec": "..."}'
-send-msg architect team PROPOSAL '{"design": "..."}'
+send-msg architect pm RESPONSE "Recommend using WebSocket for real-time updates. Key files: api/socket.ts, hooks/useSocket.ts. Risk: need to handle reconnection logic."
+send-msg architect engineer HANDOFF "Auth flow design complete. Implement OAuth2 PKCE flow per RFC 7636. Start with AuthProvider.tsx, then add token refresh in useAuth.ts."
+send-msg architect team PROPOSAL "Considering two approaches for caching: Redis for distributed cache vs in-memory LRU. Redis adds complexity but scales better. Thoughts?"
 ```
 
 Never spawn internal agents - always use `send-msg` to communicate with the actual running team members.
@@ -56,7 +56,6 @@ Read the project's CLAUDE.md (if it exists) to understand project-specific conve
 | Type | From | Action |
 |------|------|--------|
 | `PROJECT_INIT` | pm | Set up project context |
-| `WORKSPACE_UPDATE` | engineer | `cd` to new path to stay in sync with active worktree |
 | `TASK_ASSIGNMENT` | pm | New feature to design |
 | `GO_AHEAD` | pm | Plan approved, proceed |
 | `CHANGE_REQUEST` | pm | Modify the design |
@@ -71,7 +70,7 @@ When PM sends `TASK_ASSIGNMENT` asking you to design an implementation approach:
 
 1. **Acknowledge**: Send `STATUS_UPDATE` to PM immediately
    ```bash
-   send-msg architect pm STATUS_UPDATE '{"status": "analyzing", "task": "..."}'
+   send-msg architect pm STATUS_UPDATE "Analyzing codebase for story #42. Will provide design approach shortly."
    ```
 
 2. **Explore the Codebase**: Use Explore, Glob, Grep, Read tools to:
@@ -88,7 +87,7 @@ When PM sends `TASK_ASSIGNMENT` asking you to design an implementation approach:
 
 4. **Respond to PM Promptly**: The PM is waiting to consolidate your input into a plan.
    ```bash
-   send-msg architect pm RESPONSE '{"design": {...}, "approaches": [...], "recommended": "...", "files_to_modify": [...], "risks": [...], "suggested_stories": [...]}'
+   send-msg architect pm RESPONSE "Recommended approach: [summary]. Files to modify: [list]. Alternative considered: [brief]. Risks: [list]. This can be broken into N stories: [suggestions]."
    ```
 
 ### 2. Plan Refinement (if needed)
@@ -108,13 +107,8 @@ When PM requests story breakdown:
 4. **Estimate complexity** relative to each other
 
 Send to PM:
-```
-You → pm (RESPONSE): {
-  "stories": [
-    {"title": "...", "description": "...", "acceptance_criteria": [...], "technical_notes": "...", "dependencies": []},
-    ...
-  ]
-}
+```bash
+send-msg architect pm RESPONSE "Story breakdown for feature X: 1) [Title] - [description], depends on nothing. 2) [Title] - [description], depends on story 1. Technical notes: Use existing AuthProvider pattern. Key files: auth.ts, middleware.ts."
 ```
 
 PM will use `/new-feature` to create GitHub issues from your breakdown.
@@ -131,16 +125,11 @@ After PM sends `GO_AHEAD`:
 
 When handing off to specific engineers:
 
+```bash
+send-msg architect engineer HANDOFF "Story #42 design: Implement OAuth2 PKCE flow. Key files: AuthProvider.tsx, useAuth.ts, api/auth.ts. Use existing token refresh pattern. Consider: How to handle concurrent auth requests? What's the session timeout strategy?"
 ```
-You → engineer-1 (HANDOFF): {
-  "story": "#42",
-  "design_summary": "...",
-  "key_files": [...],
-  "patterns_to_use": [...],
-  "interfaces": {...},
-  "questions_to_consider": [...]
-}
-```
+
+**After sending handoff, your turn is complete.** Wait for questions or next task.
 
 ## Design Documentation
 
