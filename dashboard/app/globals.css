@@ -58,3 +58,11 @@ body {
 ::-webkit-scrollbar-thumb:hover {
   background: #1a4a7a;
 }
+
+/* Hide xterm.js cursor - Claude Code renders its own cursor */
+.xterm-cursor,
+.xterm-cursor-layer {
+  display: none !important;
+  visibility: hidden !important;
+  opacity: 0 !important;
+}

@@ -14,6 +14,7 @@
 import { io } from 'socket.io-client'
 
 const BROKER_URL = process.env.BROKER_URL || 'http://localhost:3100'
+const SESSION_ID = process.env.SESSION_ID || 'default'
 
 const [,, from, to, type, contentStr, threadId] = process.argv
 
@@ -46,7 +47,7 @@ try {
 
 // Connect to broker (transient connection - won't register as a full agent)
 const socket = io(BROKER_URL, {
-  query: { agent: from, transient: 'true' },
+  query: { agent: from, sessionId: SESSION_ID, transient: 'true' },
   timeout: 5000
 })
 

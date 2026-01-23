@@ -14,6 +14,7 @@ export interface XTerminalHandle {
   clear: () => void
   focus: () => void
   getBuffer: () => string
+  scrollToBottom: () => void
 }
 
 interface XTerminalProps {
@@ -29,11 +30,17 @@ const XTerminal = forwardRef<XTerminalHandle, XTerminalProps>(({ className, onDa
   const containerRef = useRef<HTMLDivElement>(null)
   const terminalRef = useRef<Terminal | null>(null)
   const [isReady, setIsReady] = useState(false)
+  // Track whether auto-scroll is enabled (disabled when user scrolls up)
+  const autoScrollRef = useRef(true)
 
   useImperativeHandle(actualRef, () => ({
     write: (data: string) => {
       if (terminalRef.current) {
         terminalRef.current.write(data)
+        // Only auto-scroll if user hasn't scrolled up
+        if (autoScrollRef.current) {
+          terminalRef.current.scrollToBottom()
+        }
       }
     },
     clear: () => {
@@ -41,6 +48,9 @@ const XTerminal = forwardRef<XTerminalHandle, XTerminalProps>(({ className, onDa
     },
     focus: () => {
       terminalRef.current?.focus()
+      if (autoScrollRef.current) {
+        terminalRef.current?.scrollToBottom()
+      }
     },
     getBuffer: () => {
       if (!terminalRef.current) return ''
@@ -54,6 +64,10 @@ const XTerminal = forwardRef<XTerminalHandle, XTerminalProps>(({ className, onDa
       }
       return lines.join('\n')
     },
+    scrollToBottom: () => {
+      autoScrollRef.current = true
+      terminalRef.current?.scrollToBottom()
+    },
   }), [isReady])
 
   useEffect(() => {
@@ -63,8 +77,10 @@ const XTerminal = forwardRef<XTerminalHandle, XTerminalProps>(({ className, onDa
     const terminal = new Terminal({
       cols: FIXED_COLS,
       rows: FIXED_ROWS,
-      cursorBlink: true,
-      cursorStyle: 'block',
+      // Hide xterm's cursor - Claude Code renders its own cursor
+      cursorBlink: false,
+      cursorStyle: 'bar',
+      cursorInactiveStyle: 'none',
       disableStdin: false, // Enable keyboard input
       convertEol: true,
       scrollback: 10000,
@@ -75,8 +91,9 @@ const XTerminal = forwardRef<XTerminalHandle, XTerminalProps>(({ className, onDa
       theme: {
         background: '#1a1a2e',
         foreground: '#e0e0e0',
-        cursor: '#a8e6cf',
-        cursorAccent: '#1a1a2e',
+        // Make cursor invisible - Claude Code renders its own
+        cursor: 'transparent',
+        cursorAccent: 'transparent',
         selectionBackground: '#3d5a80',
         black: '#1a1a2e',
         red: '#ff6b6b',
@@ -106,10 +123,44 @@ const XTerminal = forwardRef<XTerminalHandle, XTerminalProps>(({ className, onDa
     terminalRef.current = terminal
     setIsReady(true)
 
+    // Handle scroll events to manage auto-scroll behavior
+    // Disable auto-scroll when user scrolls up, re-enable when they scroll to bottom
+    terminal.onScroll(() => {
+      const buffer = terminal.buffer.active
+      const viewportY = buffer.viewportY
+      const baseY = buffer.baseY
+
+      // Check if we're at the bottom (viewportY equals baseY means we're at the bottom)
+      const isAtBottom = viewportY >= baseY
+
+      if (isAtBottom) {
+        // User scrolled back to bottom, re-enable auto-scroll
+        autoScrollRef.current = true
+      } else {
+        // User scrolled up, disable auto-scroll
+        autoScrollRef.current = false
+      }
+    })
+
+    // Handle Shift+Enter for multiline input (sends same as Option+Enter)
+    terminal.attachCustomKeyEventHandler((event) => {
+      // Block both keydown AND keypress for Shift+Enter to prevent submit
+      if (event.key === 'Enter' && event.shiftKey) {
+        if (event.type === 'keydown' && onData) {
+          onData('\x1b\r')
+        }
+        return false
+      }
+      return true
+    })
+
     // Handle keyboard input - send to parent
     if (onData) {
       terminal.onData((data) => {
         onData(data)
+        // Scroll to bottom when user types (and re-enable auto-scroll)
+        autoScrollRef.current = true
+        terminal.scrollToBottom()
       })
     }
 

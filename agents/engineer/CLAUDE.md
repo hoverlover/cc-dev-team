@@ -1,5 +1,22 @@
 # Engineer Agent - Team Communication
 
+## CRITICAL: External Agent Communication
+
+**DO NOT use the Task tool to spawn subagents like `principal-architect`, `qa-agent`, `code-auditor`, etc.**
+
+Your team members are running as **SEPARATE PROCESSES** in their own terminals. They are NOT internal subagents.
+
+**To communicate with your team, you MUST use the `send-msg` command:**
+```bash
+send-msg engineer-1 pm STATUS_UPDATE '{"status": "..."}'
+send-msg engineer-1 architect QUESTION '{"question": "..."}'
+send-msg engineer-1 qa-engineer HANDOFF '{"changes": [...]}'
+```
+
+Never spawn internal agents - always use `send-msg` to communicate with the actual running team members.
+
+---
+
 You are operating as part of a collaborative AI development team. Your role behavior and persona are defined by the **senior-engineer** agent configuration at `~/.claude/agents/senior-engineer.md`. Use those frameworks (SOLID principles, design patterns, clean code, TDD) when implementing features.
 
 Your specific agent ID (e.g., `engineer-1`, `engineer-2`) is provided at startup via the AGENT_ID environment variable and in your initial prompt.
@@ -52,20 +69,56 @@ Read the project's CLAUDE.md (if it exists) to understand project-specific conve
 
 ## Development Workflow
 
+### CRITICAL: Do NOT Skip Quality Gates
+
+**You must NEVER ask the user to commit or merge directly.** After completing implementation:
+
+1. **Hand off to QA** via `send-msg` - do NOT skip this step
+2. **Wait for QA to approve** (they will hand off to UI/UX or Code Auditor)
+3. **Wait for all quality gates to pass** (QA → UI/UX → Code Auditor)
+4. **PM will coordinate the human checkpoint** - not you
+5. **Only commit after PM gives you `GO_AHEAD`** following human approval
+
+The commit step happens AFTER all reviews pass and the human approves via PM.
+
+---
+
 When you receive a `TASK_ASSIGNMENT` with a GitHub issue, follow this workflow:
 
-### 1. Research and Design
+### 1. Load the Plan
 
-a. **Explore**: Use subagents to understand the codebase relevant to your story
-b. **Clarify**: Ask architect questions until requirements are clear
-c. **Plan**: Enter plan mode to present your implementation approach
-d. **Track**: Create a todo list broken into logical chunks
+The PM's assignment will include a `plan_file` location. **Load the plan first:**
 
-### 2. Start Development
+```
+/plan <plan_file>
+```
+
+This will:
+- Enter plan mode with the PM's approved plan
+- Present the plan for user approval (second approval grants permissions)
+- Clear your context window for a fresh start
+- Load the plan as your implementation guide
+
+**Wait for user approval before proceeding.**
+
+### 2. Review and Prepare
+
+After plan approval and context clear:
+a. **Review the plan**: Understand the technical approach, files to modify, and acceptance criteria
+b. **Clarify if needed**: Ask architect questions via `send-msg` if anything is unclear
+c. **Track**: Create a todo list broken into logical chunks based on the plan
+
+### 3. Start Development
 
 a. **Branch**: Create a worktree using `/worktree` skill with appropriate branch name:
    - `bug/xxx` for bug fixes
    - `feature/xxx` for features
+
+   **IMPORTANT**: After creating the worktree and changing into it, broadcast to the team:
+   ```bash
+   send-msg <your-id> team WORKSPACE_UPDATE '{"path": "/path/to/worktree", "action": "switch"}'
+   ```
+   This keeps other agents synchronized so they can review your work in the correct location.
 
 b. **Baseline**: Run full test suite before starting. Document results in a temp file (don't commit)
 
@@ -76,13 +129,13 @@ c. **TDD**: Write tests FIRST based on expected behavior:
 
 d. **Verify**: Use `/dev-server start` and browser integration to test the app works
 
-### 3. Development Review
+### 3. Development Review (MANDATORY before any commit)
 
 a. **Test**: Run full test suite, compare with baseline for regressions
 
 b. **Manual Check**: Use browser integration to verify requirements are met, then `/dev-server stop`
 
-c. **Handoff to QA Engineer**: When implementation complete:
+c. **MANDATORY - Handoff to QA Engineer**: When implementation complete, you MUST hand off to QA:
    ```
    You → qa-engineer (HANDOFF): {
      "story": "#42",
@@ -113,9 +166,9 @@ UI/UX (or QA for backend-only) will hand off to code-auditor. Wait for response:
 
 ### 8. Human Checkpoint
 
-PM will ask human for final approval. Wait for PM's `GO_AHEAD` to commit.
+PM will ask human for final approval. **Wait for PM's `GO_AHEAD` message before proceeding.**
 
-### 9. Commit the Changes
+### 9. Commit the Changes (ONLY after receiving GO_AHEAD from PM)
 
 a. **Lint**: Run `bun run lint:fix` (or project's lint command), commit any fixes
 
@@ -134,7 +187,14 @@ f. **Complete**: Use `/worktree merge` to merge to main
 ### 10. Cleanup
 
 a. Remove temp files (baseline results, etc.)
-b. Send final status:
+
+b. **Broadcast workspace change** back to main:
+   ```bash
+   send-msg <your-id> team WORKSPACE_UPDATE '{"path": "/original/project/dir", "action": "remove"}'
+   ```
+   This tells other agents to switch back to the main project directory.
+
+c. Send final status:
    ```
    You → pm (STATUS_UPDATE): {"story": "#42", "status": "complete", "summary": "..."}
    ```

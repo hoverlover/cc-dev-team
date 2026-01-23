@@ -5,6 +5,7 @@ import { io, Socket } from 'socket.io-client'
 import dynamic from 'next/dynamic'
 import '@xterm/xterm/css/xterm.css'
 import styles from './page.module.css'
+import ProjectPicker from '../components/ProjectPicker'
 
 // Dynamic import of XTerminal to avoid SSR issues
 const XTerminal = dynamic(() => import('../components/XTerminal'), {
@@ -17,11 +18,13 @@ interface XTerminalHandle {
   clear: () => void
   focus: () => void
   getBuffer: () => string
+  scrollToBottom: () => void
 }
 
 interface Message {
   id: number
   created_at: string
+  session_id?: string
   from_agent: string
   to_agent: string
   thread_id?: string
@@ -36,9 +39,19 @@ interface AgentStatus {
   updatedAt?: string
 }
 
-interface AgentInfo {
-  headless?: boolean
-  terminalSize?: { cols: number; rows: number }
+interface Session {
+  id: string
+  name: string
+  projectDir: string
+  agentCount?: number
+  createdAt?: string
+}
+
+interface SessionState {
+  agents: Set<string>
+  agentStatuses: Record<string, AgentStatus>
+  messages: Message[]
+  selectedAgent: string | null
 }
 
 const BROKER_URL = process.env.NEXT_PUBLIC_BROKER_URL || 'http://localhost:3100'
@@ -80,31 +93,49 @@ function getStatusLabel(status: AgentStatus): string {
   }
 }
 
+function createEmptySessionState(): SessionState {
+  return {
+    agents: new Set(),
+    agentStatuses: {},
+    messages: [],
+    selectedAgent: null,
+  }
+}
+
 export default function Dashboard() {
   const [connected, setConnected] = useState(false)
-  const [activeAgents, setActiveAgents] = useState<Set<string>>(new Set())
-  const [agentStatuses, setAgentStatuses] = useState<Record<string, AgentStatus>>({})
-  const [agentInfos, setAgentInfos] = useState<Record<string, AgentInfo>>({})
-  const [messages, setMessages] = useState<Message[]>([])
-  const [projectDir, setProjectDir] = useState<string | null>(null)
-  const [selectedAgent, setSelectedAgent] = useState<string | null>(null)
+  const [sessions, setSessions] = useState<Session[]>([])
+  const [activeSessionId, setActiveSessionId] = useState<string | null>(null)
+  const [sessionStates, setSessionStates] = useState<Record<string, SessionState>>({})
   const [viewMode, setViewMode] = useState<'nodes' | 'chat'>('nodes')
   const [isDragging, setIsDragging] = useState(false)
+  const [showProjectPicker, setShowProjectPicker] = useState(false)
+  const [showAddAgent, setShowAddAgent] = useState(false)
+  const [agentsToAdd, setAgentsToAdd] = useState<Set<string>>(new Set())
 
   const socketRef = useRef<Socket | null>(null)
   const xtermRef = useRef<XTerminalHandle | null>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const selectedAgentRef = useRef<string | null>(null)
+  const activeSessionIdRef = useRef<string | null>(null)
+  const joinSessionRef = useRef<((sessionId: string) => void) | null>(null)
 
-  // Keep selectedAgentRef in sync for use in socket handler
+  // Keep refs in sync
   useEffect(() => {
-    selectedAgentRef.current = selectedAgent
-  }, [selectedAgent])
+    activeSessionIdRef.current = activeSessionId
+    const state = activeSessionId ? sessionStates[activeSessionId] : null
+    selectedAgentRef.current = state?.selectedAgent || null
+  }, [activeSessionId, sessionStates])
 
-  // Send keystrokes to broker
+  // Get current session state
+  const currentSessionState = activeSessionId ? sessionStates[activeSessionId] : null
+  const currentSession = sessions.find(s => s.id === activeSessionId)
+
+  // Send keystrokes to broker (for direct terminal typing)
   const handleTerminalData = useCallback((data: string) => {
-    if (socketRef.current && selectedAgentRef.current) {
+    if (socketRef.current && selectedAgentRef.current && activeSessionIdRef.current) {
       socketRef.current.emit('agent_input', {
+        sessionId: activeSessionIdRef.current,
         agent: selectedAgentRef.current,
         data
       })
@@ -113,8 +144,11 @@ export default function Dashboard() {
 
   // Subscribe to agent output when terminal is ready
   const handleTerminalReady = useCallback(() => {
-    if (socketRef.current && selectedAgentRef.current) {
-      socketRef.current.emit('subscribe_output', { agent: selectedAgentRef.current })
+    if (socketRef.current && selectedAgentRef.current && activeSessionIdRef.current) {
+      socketRef.current.emit('subscribe_output', {
+        sessionId: activeSessionIdRef.current,
+        agent: selectedAgentRef.current
+      })
     }
   }, [])
 
@@ -128,32 +162,29 @@ export default function Dashboard() {
   const handleDragLeave = useCallback((e: React.DragEvent) => {
     e.preventDefault()
     e.stopPropagation()
-    // Only set to false if we're leaving the drop zone entirely
-    if (e.currentTarget === e.target) {
+    // Check if we're leaving to an element outside the container
+    const relatedTarget = e.relatedTarget as Node | null
+    if (!relatedTarget || !e.currentTarget.contains(relatedTarget)) {
       setIsDragging(false)
     }
   }, [])
 
-  // Handle drag over - prevent default to allow drop
   const handleDragOver = useCallback((e: React.DragEvent) => {
     e.preventDefault()
     e.stopPropagation()
   }, [])
 
-  // Handle file drop - send files to agent
   const handleDrop = useCallback(async (e: React.DragEvent) => {
     e.preventDefault()
     e.stopPropagation()
     setIsDragging(false)
 
-    if (!socketRef.current || !selectedAgentRef.current) return
+    if (!socketRef.current || !selectedAgentRef.current || !activeSessionIdRef.current) return
 
     const files = Array.from(e.dataTransfer.files)
     if (files.length === 0) return
 
-    // Process each dropped file
     for (const file of files) {
-      // Read file content
       const reader = new FileReader()
 
       reader.onload = () => {
@@ -162,15 +193,15 @@ export default function Dashboard() {
           /\.(txt|md|js|ts|tsx|jsx|json|css|html|xml|yaml|yml|py|rb|go|rs|java|c|cpp|h|sh|bash|zsh)$/i.test(file.name)
 
         if (isText) {
-          // For text files, send the path and content as a prompt
           const message = `[File attached: ${file.name}]\n\`\`\`\n${content}\n\`\`\`\n`
           socketRef.current?.emit('agent_input', {
+            sessionId: activeSessionIdRef.current,
             agent: selectedAgentRef.current,
             data: message
           })
         } else {
-          // For binary files, just send the path reference
           socketRef.current?.emit('agent_input', {
+            sessionId: activeSessionIdRef.current,
             agent: selectedAgentRef.current,
             data: `[File reference: ${file.name} (${file.type}, ${file.size} bytes)]\n`
           })
@@ -181,8 +212,8 @@ export default function Dashboard() {
           /\.(txt|md|js|ts|tsx|jsx|json|css|html|xml|yaml|yml|py|rb|go|rs|java|c|cpp|h|sh|bash|zsh)$/i.test(file.name)) {
         reader.readAsText(file)
       } else {
-        // For binary files, just reference them
         socketRef.current.emit('agent_input', {
+          sessionId: activeSessionIdRef.current,
           agent: selectedAgentRef.current,
           data: `[File reference: ${file.name} (${file.type}, ${file.size} bytes)]\n`
         })
@@ -190,22 +221,167 @@ export default function Dashboard() {
     }
   }, [])
 
-  // Handle agent selection - subscription happens in onReady callback
+  // Handle agent selection within current session
   const handleSelectAgent = useCallback((agent: string | null) => {
+    if (!activeSessionId) return
+
+    const currentState = sessionStates[activeSessionId]
+    const previousAgent = currentState?.selectedAgent
+
     // Unsubscribe from previous agent
-    if (selectedAgent && socketRef.current) {
-      socketRef.current.emit('unsubscribe_output', { agent: selectedAgent })
+    if (previousAgent && socketRef.current) {
+      socketRef.current.emit('unsubscribe_output', {
+        sessionId: activeSessionId,
+        agent: previousAgent
+      })
     }
 
-    // Update ref synchronously BEFORE state update triggers re-render
-    // This ensures handleTerminalReady has the correct agent when onReady fires
+    // Update ref synchronously
     selectedAgentRef.current = agent
 
-    setSelectedAgent(agent)
-    // Note: subscription to new agent happens in handleTerminalReady
-    // when the terminal component signals it's ready
-  }, [selectedAgent])
+    // Update session state
+    setSessionStates(prev => ({
+      ...prev,
+      [activeSessionId]: {
+        ...(prev[activeSessionId] || createEmptySessionState()),
+        selectedAgent: agent
+      }
+    }))
+  }, [activeSessionId, sessionStates])
 
+  // Join a session (for tab switching)
+  const joinSession = useCallback((sessionId: string) => {
+    if (!socketRef.current) return
+
+    // Leave current session if any
+    if (activeSessionIdRef.current) {
+      socketRef.current.emit('leave_session', { sessionId: activeSessionIdRef.current })
+    }
+
+    // Join new session
+    socketRef.current.emit('join_session', { sessionId }, (result: {
+      success: boolean
+      roster?: string[]
+      project?: { project_dir: string }
+      error?: string
+    }) => {
+      if (result.success) {
+        // Update refs synchronously BEFORE state update to avoid race condition
+        activeSessionIdRef.current = sessionId
+        const existingState = sessionStates[sessionId]
+        selectedAgentRef.current = existingState?.selectedAgent || null
+
+        setActiveSessionId(sessionId)
+
+        // Initialize session state if not exists
+        setSessionStates(prev => {
+          if (!prev[sessionId]) {
+            return {
+              ...prev,
+              [sessionId]: {
+                ...createEmptySessionState(),
+                agents: new Set(result.roster || [])
+              }
+            }
+          }
+          return {
+            ...prev,
+            [sessionId]: {
+              ...prev[sessionId],
+              agents: new Set(result.roster || [])
+            }
+          }
+        })
+      }
+    })
+  }, [sessionStates])
+
+  // Keep joinSession ref in sync (so socket effect doesn't need to depend on it)
+  useEffect(() => {
+    joinSessionRef.current = joinSession
+  }, [joinSession])
+
+  // Create a new session/project
+  const handleCreateSession = useCallback((projectDir: string, projectName: string, agents: string[]) => {
+    if (!socketRef.current) return
+
+    socketRef.current.emit('create_session', {
+      projectDir,
+      name: projectName,
+      agents
+    }, (result: { success: boolean; session?: Session; error?: string }) => {
+      if (result.success && result.session) {
+        setShowProjectPicker(false)
+        // Join the new session
+        joinSession(result.session.id)
+      } else {
+        console.error('Failed to create session:', result.error)
+      }
+    })
+  }, [joinSession])
+
+  // Toggle agent selection for adding
+  const handleToggleAgentToAdd = useCallback((role: string) => {
+    setAgentsToAdd(prev => {
+      const next = new Set(prev)
+      if (next.has(role)) {
+        next.delete(role)
+      } else {
+        next.add(role)
+      }
+      return next
+    })
+  }, [])
+
+  // Spawn selected agents in the current session
+  const handleSpawnAgents = useCallback(() => {
+    if (!socketRef.current || !activeSessionId || agentsToAdd.size === 0) return
+
+    // Spawn each selected agent
+    for (const role of agentsToAdd) {
+      socketRef.current.emit('spawn_agent', {
+        sessionId: activeSessionId,
+        role
+      }, (result: { success: boolean; error?: string }) => {
+        if (!result.success) {
+          console.error(`Failed to spawn agent ${role}:`, result.error)
+        }
+      })
+    }
+
+    setAgentsToAdd(new Set())
+    setShowAddAgent(false)
+  }, [activeSessionId, agentsToAdd])
+
+  // Close a session
+  const handleCloseSession = useCallback((sessionId: string, e: React.MouseEvent) => {
+    e.stopPropagation()
+    if (!socketRef.current) return
+
+    socketRef.current.emit('delete_session', { sessionId }, (result: { success: boolean }) => {
+      if (result.success) {
+        // Remove from local state
+        setSessions(prev => prev.filter(s => s.id !== sessionId))
+        setSessionStates(prev => {
+          const next = { ...prev }
+          delete next[sessionId]
+          return next
+        })
+
+        // If this was the active session, switch to another
+        if (activeSessionId === sessionId) {
+          const remaining = sessions.filter(s => s.id !== sessionId)
+          if (remaining.length > 0) {
+            joinSession(remaining[0].id)
+          } else {
+            setActiveSessionId(null)
+          }
+        }
+      }
+    })
+  }, [activeSessionId, sessions, joinSession])
+
+  // Socket connection and event handlers
   useEffect(() => {
     const socket = io(BROKER_URL, {
       query: { dashboard: 'true' },
@@ -223,95 +399,153 @@ export default function Dashboard() {
       setConnected(false)
     })
 
-    socket.on('roster', (agents: string[]) => {
-      setActiveAgents(new Set(agents))
-    })
-
-    socket.on('project', (project: { project_dir: string }) => {
-      if (project?.project_dir) {
-        setProjectDir(project.project_dir)
+    // Receive list of existing sessions
+    socket.on('sessions', (sessionList: Session[]) => {
+      setSessions(sessionList)
+      // Auto-join first session if exists and we're not in one
+      if (sessionList.length > 0 && !activeSessionIdRef.current && joinSessionRef.current) {
+        joinSessionRef.current(sessionList[0].id)
       }
     })
 
-    socket.on('message_history', (msgs: Message[]) => {
-      setMessages(msgs)
+    // New session created
+    socket.on('session_created', (session: Session) => {
+      setSessions(prev => [...prev, session])
     })
 
-    socket.on('message', (msg: Message) => {
-      setMessages((prev) => [...prev, msg])
+    // Session deleted
+    socket.on('session_deleted', ({ sessionId }: { sessionId: string }) => {
+      setSessions(prev => prev.filter(s => s.id !== sessionId))
     })
 
-    socket.on('agent_joined', ({ role }: { role: string }) => {
-      setActiveAgents((prev) => new Set([...Array.from(prev), role]))
-      setMessages((prev) => [
-        ...prev,
-        {
-          id: Date.now(),
-          created_at: new Date().toISOString(),
-          from_agent: 'system',
-          to_agent: 'team',
-          message_type: 'SYSTEM',
-          content: `${formatAgentName(role)} joined`,
-        },
-      ])
-    })
-
-    socket.on('agent_left', ({ role }: { role: string }) => {
-      setActiveAgents((prev) => {
-        const next = new Set(prev)
-        next.delete(role)
-        return next
+    // Agent joined a session
+    socket.on('agent_joined', ({ sessionId, role }: { sessionId: string; role: string }) => {
+      setSessionStates(prev => {
+        const state = prev[sessionId] || createEmptySessionState()
+        const newAgents = new Set(state.agents)
+        newAgents.add(role)
+        return {
+          ...prev,
+          [sessionId]: { ...state, agents: newAgents }
+        }
       })
-      setAgentStatuses((prev) => {
-        const next = { ...prev }
-        delete next[role]
-        return next
-      })
-      setMessages((prev) => [
-        ...prev,
-        {
-          id: Date.now(),
-          created_at: new Date().toISOString(),
-          from_agent: 'system',
-          to_agent: 'team',
-          message_type: 'SYSTEM',
-          content: `${formatAgentName(role)} left`,
-        },
-      ])
+
+      // Add system message
+      if (sessionId === activeSessionIdRef.current) {
+        setSessionStates(prev => {
+          const state = prev[sessionId]
+          if (!state) return prev
+          return {
+            ...prev,
+            [sessionId]: {
+              ...state,
+              messages: [...state.messages, {
+                id: Date.now(),
+                created_at: new Date().toISOString(),
+                session_id: sessionId,
+                from_agent: 'system',
+                to_agent: 'team',
+                message_type: 'SYSTEM',
+                content: `${formatAgentName(role)} joined`,
+              }]
+            }
+          }
+        })
+      }
     })
 
-    socket.on('agent_status', ({ role, status, task, waitingForInput }: {
+    // Agent left a session
+    socket.on('agent_left', ({ sessionId, role }: { sessionId: string; role: string }) => {
+      setSessionStates(prev => {
+        const state = prev[sessionId]
+        if (!state) return prev
+
+        const newAgents = new Set(state.agents)
+        newAgents.delete(role)
+
+        const { [role]: _, ...restStatuses } = state.agentStatuses
+
+        return {
+          ...prev,
+          [sessionId]: {
+            ...state,
+            agents: newAgents,
+            agentStatuses: restStatuses,
+            messages: [...state.messages, {
+              id: Date.now(),
+              created_at: new Date().toISOString(),
+              session_id: sessionId,
+              from_agent: 'system',
+              to_agent: 'team',
+              message_type: 'SYSTEM',
+              content: `${formatAgentName(role)} left`,
+            }]
+          }
+        }
+      })
+    })
+
+    // Agent status update
+    socket.on('agent_status', ({ sessionId, role, status, task, waitingForInput }: {
+      sessionId: string
       role: string
       status: string
       task?: string
       waitingForInput?: boolean
     }) => {
-      setAgentStatuses((prev) => ({
-        ...prev,
-        [role]: {
-          status: status as AgentStatus['status'],
-          task,
-          waitingForInput,
-          updatedAt: new Date().toISOString(),
-        },
-      }))
+      setSessionStates(prev => {
+        const state = prev[sessionId]
+        if (!state) return prev
+        return {
+          ...prev,
+          [sessionId]: {
+            ...state,
+            agentStatuses: {
+              ...state.agentStatuses,
+              [role]: {
+                status: status as AgentStatus['status'],
+                task,
+                waitingForInput,
+                updatedAt: new Date().toISOString(),
+              }
+            }
+          }
+        }
+      })
     })
 
-    socket.on('agent_info', ({ role, headless, terminalSize }: {
-      role: string
-      headless?: boolean
-      terminalSize?: { cols: number; rows: number }
-    }) => {
-      setAgentInfos((prev) => ({
-        ...prev,
-        [role]: { headless, terminalSize }
-      }))
+    // Message history for a session
+    socket.on('message_history', ({ sessionId, messages }: { sessionId: string; messages: Message[] }) => {
+      setSessionStates(prev => {
+        const state = prev[sessionId] || createEmptySessionState()
+        return {
+          ...prev,
+          [sessionId]: { ...state, messages }
+        }
+      })
     })
 
-    // Handle streaming terminal output from agents
-    socket.on('agent_output', ({ agent, data }: { agent: string; data: string }) => {
-      // Write to terminal if this is the currently selected agent
-      if (agent === selectedAgentRef.current && xtermRef.current) {
+    // New message
+    socket.on('message', (msg: Message) => {
+      const sessionId = msg.session_id || activeSessionIdRef.current
+      if (!sessionId) return
+
+      setSessionStates(prev => {
+        const state = prev[sessionId]
+        if (!state) return prev
+        return {
+          ...prev,
+          [sessionId]: {
+            ...state,
+            messages: [...state.messages, msg]
+          }
+        }
+      })
+    })
+
+    // Terminal output
+    socket.on('agent_output', ({ sessionId, agent, data }: { sessionId: string; agent: string; data: string }) => {
+      if (sessionId === activeSessionIdRef.current && agent === selectedAgentRef.current && xtermRef.current) {
         xtermRef.current.write(data)
       }
     })
@@ -319,22 +553,26 @@ export default function Dashboard() {
     return () => {
       socket.disconnect()
     }
-  }, [])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []) // Empty deps - socket connection should only be created once
 
+  // Scroll messages to bottom
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [messages])
+  }, [currentSessionState?.messages])
 
-  // Sort agents: PM first, then architects, engineers, others
-  const allAgents = Array.from(activeAgents).sort((a, b) => {
-    const order = ['pm', 'architect', 'qa', 'ui-ux', 'code-auditor']
-    const aIdx = order.findIndex(o => a === o)
-    const bIdx = order.findIndex(o => b === o)
-    if (aIdx !== -1 && bIdx !== -1) return aIdx - bIdx
-    if (aIdx !== -1) return -1
-    if (bIdx !== -1) return 1
-    return a.localeCompare(b)
-  })
+  // Sort agents
+  const allAgents = currentSessionState
+    ? Array.from(currentSessionState.agents).sort((a, b) => {
+        const order = ['pm', 'architect', 'qa', 'ui-ux', 'code-auditor']
+        const aIdx = order.findIndex(o => a === o)
+        const bIdx = order.findIndex(o => b === o)
+        if (aIdx !== -1 && bIdx !== -1) return aIdx - bIdx
+        if (aIdx !== -1) return -1
+        if (bIdx !== -1) return 1
+        return a.localeCompare(b)
+      })
+    : []
 
   return (
     <div className={styles.container}>
@@ -355,21 +593,54 @@ export default function Dashboard() {
               Messages
             </button>
           </div>
-          <div className={styles.projectInfo}>
-            <span className={styles.projectName}>
-              {projectDir || 'No project loaded'}
-            </span>
-            <span className={`${styles.connectionStatus} ${connected ? styles.connected : styles.disconnected}`}>
-              {connected ? 'Connected' : 'Disconnected'}
-            </span>
-          </div>
+          <span className={`${styles.connectionStatus} ${connected ? styles.connected : styles.disconnected}`}>
+            {connected ? 'Connected' : 'Disconnected'}
+          </span>
         </div>
       </header>
 
+      {/* Session tabs */}
+      <div className={styles.sessionTabs}>
+        {sessions.map(session => (
+          <div
+            key={session.id}
+            className={`${styles.sessionTab} ${session.id === activeSessionId ? styles.activeTab : ''}`}
+            onClick={() => joinSession(session.id)}
+          >
+            <span className={styles.sessionName}>{session.name}</span>
+            <button
+              className={styles.closeTab}
+              onClick={(e) => handleCloseSession(session.id, e)}
+              title="Close session"
+            >
+              &times;
+            </button>
+          </div>
+        ))}
+        <button
+          className={styles.newSessionButton}
+          onClick={() => setShowProjectPicker(true)}
+          title="Open new project"
+        >
+          + New Project
+        </button>
+      </div>
+
       <main className={styles.main}>
-        {viewMode === 'nodes' ? (
+        {!activeSessionId ? (
+          <div className={styles.noSession}>
+            <h2>No Project Open</h2>
+            <p>Open a project to get started with your AI team.</p>
+            <button
+              className={styles.openProjectButton}
+              onClick={() => setShowProjectPicker(true)}
+            >
+              Open Project
+            </button>
+          </div>
+        ) : viewMode === 'nodes' ? (
           <>
-            {/* Single column agent sidebar */}
+            {/* Agent sidebar */}
             <aside className={styles.agentSidebar}>
               <div className={styles.sidebarHeader}>
                 <h2>Agents</h2>
@@ -377,8 +648,8 @@ export default function Dashboard() {
               </div>
               <div className={styles.agentList}>
                 {allAgents.map((agent) => {
-                  const status = agentStatuses[agent] || { status: 'idle' }
-                  const isSelected = selectedAgent === agent
+                  const status = currentSessionState?.agentStatuses[agent] || { status: 'idle' }
+                  const isSelected = currentSessionState?.selectedAgent === agent
                   const needsInput = status.waitingForInput || status.status === 'waiting_input'
 
                   return (
@@ -401,20 +672,61 @@ export default function Dashboard() {
                 {allAgents.length === 0 && (
                   <div className={styles.emptyAgents}>
                     <p>No agents online</p>
-                    <p className={styles.hint}>Start agents to see them here</p>
+                    <p className={styles.hint}>Agents are starting...</p>
                   </div>
                 )}
+
+                {/* Add Agent button */}
+                <div className={styles.addAgentSection}>
+                  <button
+                    className={styles.addAgentButton}
+                    onClick={() => {
+                      setShowAddAgent(!showAddAgent)
+                      if (showAddAgent) setAgentsToAdd(new Set())
+                    }}
+                  >
+                    + Add Agent
+                  </button>
+                  {showAddAgent && (
+                    <div className={styles.addAgentMenu}>
+                      {['pm', 'architect', 'engineer', 'qa-engineer', 'ui-ux', 'code-auditor']
+                        .filter(role => !allAgents.includes(role))
+                        .map(role => (
+                          <label key={role} className={styles.addAgentOption}>
+                            <input
+                              type="checkbox"
+                              checked={agentsToAdd.has(role)}
+                              onChange={() => handleToggleAgentToAdd(role)}
+                            />
+                            <span>{formatAgentName(role)}</span>
+                          </label>
+                        ))}
+                      {['pm', 'architect', 'engineer', 'qa-engineer', 'ui-ux', 'code-auditor']
+                        .filter(role => !allAgents.includes(role)).length === 0 ? (
+                        <div className={styles.allAgentsRunning}>All agents running</div>
+                      ) : (
+                        <button
+                          className={styles.launchAgentsButton}
+                          onClick={handleSpawnAgents}
+                          disabled={agentsToAdd.size === 0}
+                        >
+                          Launch {agentsToAdd.size > 0 ? `(${agentsToAdd.size})` : ''}
+                        </button>
+                      )}
+                    </div>
+                  )}
+                </div>
               </div>
             </aside>
 
-            {/* Terminal panel - takes remaining width */}
+            {/* Terminal panel */}
             <section className={styles.terminalSection}>
-              {selectedAgent ? (
+              {currentSessionState?.selectedAgent ? (
                 <>
                   <div className={styles.terminalHeader}>
                     <span className={styles.terminalTitle}>
-                      {formatAgentName(selectedAgent)}
-                      {agentStatuses[selectedAgent]?.waitingForInput && (
+                      {formatAgentName(currentSessionState.selectedAgent)}
+                      {currentSessionState.agentStatuses[currentSessionState.selectedAgent]?.waitingForInput && (
                         <span className={styles.inputRequired}> - Input Required</span>
                       )}
                     </span>
@@ -436,7 +748,7 @@ export default function Dashboard() {
                     onDrop={handleDrop}
                   >
                     <XTerminal
-                      key={selectedAgent}
+                      key={`${activeSessionId}-${currentSessionState.selectedAgent}`}
                       forwardedRef={xtermRef}
                       className={styles.terminal}
                       onData={handleTerminalData}
@@ -455,13 +767,13 @@ export default function Dashboard() {
         ) : (
           <section className={styles.chatPanel}>
             <div className={styles.messagesContainer}>
-              {messages.length === 0 ? (
+              {(currentSessionState?.messages.length || 0) === 0 ? (
                 <div className={styles.emptyState}>
                   <h3>No messages yet</h3>
                   <p>Messages between agents will appear here</p>
                 </div>
               ) : (
-                messages.map((msg) => (
+                currentSessionState?.messages.map((msg) => (
                   <div
                     key={msg.id}
                     className={`${styles.message} ${msg.from_agent === 'system' ? styles.systemMessage : ''}`}
@@ -496,6 +808,14 @@ export default function Dashboard() {
           </section>
         )}
       </main>
+
+      {/* Project picker modal */}
+      <ProjectPicker
+        socket={socketRef.current}
+        isOpen={showProjectPicker}
+        onClose={() => setShowProjectPicker(false)}
+        onSelectProject={handleCreateSession}
+      />
     </div>
   )
 }

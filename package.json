@@ -4,7 +4,10 @@
   "description": "Multi-agent orchestration system for software development with Claude Code",
   "type": "module",
   "scripts": {
+    "dev": "./start-orchestrator.sh",
+    "start": "./start-orchestrator.sh",
     "broker": "node broker/server.js",
+    "//broker": "Uses node instead of bun because better-sqlite3 native module is not supported in Bun",
     "dashboard": "cd dashboard && bun run dev"
   },
   "dependencies": {

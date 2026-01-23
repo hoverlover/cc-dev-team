@@ -2,15 +2,14 @@
 #
 # Start the Agentic Orchestrator
 #
-# Starts the message broker, dashboard, and all agents in headless mode.
-# All agent terminals are accessible via the dashboard at http://localhost:3000
+# Starts the message broker and dashboard.
+# Agents are spawned automatically when you open a project in the dashboard.
 #
 # Usage: ./start-orchestrator.sh [options]
 #
 # Options:
 #   --no-broker      Skip starting the broker (if already running)
 #   --no-dashboard   Skip starting the dashboard (if already running)
-#   --agents         Comma-separated list of agents to start (default: all)
 #   --help           Show this help message
 #
 
@@ -22,13 +21,12 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
-BLUE='\033[0;34m'
+CYAN='\033[0;36m'
 NC='\033[0m' # No Color
 
 # Default settings
 START_BROKER=true
 START_DASHBOARD=true
-AGENTS="pm,architect,engineer,qa-engineer,code-auditor,ui-ux"
 
 # Parse arguments
 while [[ $# -gt 0 ]]; do
@@ -41,20 +39,15 @@ while [[ $# -gt 0 ]]; do
       START_DASHBOARD=false
       shift
       ;;
-    --agents)
-      AGENTS="$2"
-      shift 2
-      ;;
     --help)
       echo "Usage: $0 [options]"
       echo ""
       echo "Options:"
       echo "  --no-broker      Skip starting the broker (if already running)"
       echo "  --no-dashboard   Skip starting the dashboard (if already running)"
-      echo "  --agents         Comma-separated list of agents to start (default: all)"
       echo "  --help           Show this help message"
       echo ""
-      echo "Available agents: pm, architect, engineer, qa-engineer, code-auditor, ui-ux"
+      echo "Agents are spawned automatically when you open a project in the dashboard."
       exit 0
       ;;
     *)
@@ -74,25 +67,34 @@ cleanup() {
       kill "$pid" 2>/dev/null || true
     fi
   done
-  wait
+  # Kill any child processes
+  pkill -P $$ 2>/dev/null || true
+  wait 2>/dev/null || true
   echo -e "${GREEN}All processes stopped.${NC}"
 }
 
-trap cleanup SIGINT SIGTERM
+trap cleanup SIGINT SIGTERM EXIT
 
-echo -e "${BLUE}╔════════════════════════════════════════════════════════════╗${NC}"
-echo -e "${BLUE}║           AGENTIC ORCHESTRATOR - STARTUP                   ║${NC}"
-echo -e "${BLUE}╚════════════════════════════════════════════════════════════╝${NC}"
+echo -e "${CYAN}╔════════════════════════════════════════════════════════════╗${NC}"
+echo -e "${CYAN}║           AGENTIC ORCHESTRATOR - STARTUP                   ║${NC}"
+echo -e "${CYAN}╚════════════════════════════════════════════════════════════╝${NC}"
 echo ""
 
-# Start broker
+# Start broker (uses node due to better-sqlite3 native dependency)
 if [ "$START_BROKER" = true ]; then
   echo -e "${YELLOW}Starting message broker...${NC}"
   cd "$SCRIPT_DIR/broker"
   node server.js &
-  PIDS+=($!)
+  BROKER_PID=$!
+  PIDS+=($BROKER_PID)
   sleep 2
-  echo -e "${GREEN}Broker started on port 3100${NC}"
+
+  # Verify broker started
+  if ! kill -0 $BROKER_PID 2>/dev/null; then
+    echo -e "${RED}Error: Broker failed to start${NC}"
+    exit 1
+  fi
+  echo -e "${GREEN}✓ Broker running on port 3100${NC}"
 else
   echo -e "${YELLOW}Skipping broker (--no-broker)${NC}"
 fi
@@ -101,52 +103,34 @@ fi
 if [ "$START_DASHBOARD" = true ]; then
   echo -e "${YELLOW}Starting dashboard...${NC}"
   cd "$SCRIPT_DIR/dashboard"
-  npm run dev > /dev/null 2>&1 &
-  PIDS+=($!)
+  bun run dev &
+  DASHBOARD_PID=$!
+  PIDS+=($DASHBOARD_PID)
   sleep 3
-  echo -e "${GREEN}Dashboard started on port 3000${NC}"
+
+  # Verify dashboard started
+  if ! kill -0 $DASHBOARD_PID 2>/dev/null; then
+    echo -e "${RED}Error: Dashboard failed to start${NC}"
+    exit 1
+  fi
+  echo -e "${GREEN}✓ Dashboard running on port 3101${NC}"
 else
   echo -e "${YELLOW}Skipping dashboard (--no-dashboard)${NC}"
 fi
 
-# Parse agents list
-IFS=',' read -ra AGENT_ARRAY <<< "$AGENTS"
-STARTED_AGENTS=0
-
-# Start each agent in headless mode
-for agent in "${AGENT_ARRAY[@]}"; do
-  agent=$(echo "$agent" | xargs)  # Trim whitespace
-
-  AGENT_DIR="$SCRIPT_DIR/agents/$agent"
-
-  if [ ! -d "$AGENT_DIR" ]; then
-    echo -e "${RED}Agent directory not found: $AGENT_DIR${NC}"
-    continue
-  fi
-
-  echo -e "${YELLOW}Starting $agent in headless mode...${NC}"
-
-  node "$SCRIPT_DIR/tools/claude-wrapper.js" \
-    --agent-id "$agent" \
-    --agent-dir "$AGENT_DIR" \
-    --headless &
-
-  PIDS+=($!)
-  STARTED_AGENTS=$((STARTED_AGENTS + 1))
-  sleep 1
-done
-
 echo ""
 echo -e "${GREEN}╔════════════════════════════════════════════════════════════╗${NC}"
-echo -e "${GREEN}║                    ALL SYSTEMS RUNNING                     ║${NC}"
+echo -e "${GREEN}║                 ORCHESTRATOR READY                         ║${NC}"
 echo -e "${GREEN}╠════════════════════════════════════════════════════════════╣${NC}"
+echo -e "${GREEN}║  Dashboard: http://localhost:3101                          ║${NC}"
 echo -e "${GREEN}║  Broker:    http://localhost:3100                          ║${NC}"
-echo -e "${GREEN}║  Dashboard: http://localhost:3000                          ║${NC}"
-echo -e "${GREEN}║  Agents:    ${STARTED_AGENTS} running in headless mode                    ║${NC}"
 echo -e "${GREEN}╠════════════════════════════════════════════════════════════╣${NC}"
-echo -e "${GREEN}║  Press Ctrl+C to stop all processes                        ║${NC}"
+echo -e "${GREEN}║  Open the dashboard and select a project folder to         ║${NC}"
+echo -e "${GREEN}║  launch your AI team. Agents will start automatically.     ║${NC}"
+echo -e "${GREEN}╠════════════════════════════════════════════════════════════╣${NC}"
+echo -e "${GREEN}║  Press Ctrl+C to stop                                      ║${NC}"
 echo -e "${GREEN}╚════════════════════════════════════════════════════════════╝${NC}"
 echo ""
 
-# Wait for all processes
+# Wait for processes
 wait

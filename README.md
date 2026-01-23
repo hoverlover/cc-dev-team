@@ -182,15 +182,15 @@ Messages are persisted to SQLite for history and debugging.
 
 ## Tools
 
-### send-message.js
+### send-msg
 
-Send a message to another agent:
+Send a message to another agent (wrapper adds tools dir to PATH):
 ```bash
-node tools/send-message.js <from> <to> <type> '<content>'
+send-msg <from> <to> <type> '<content>'
 
 # Examples:
-node tools/send-message.js pm team PROJECT_INIT '{"project_dir":"/code/myapp"}'
-node tools/send-message.js architect engineer-1 HANDOFF '{"task":"implement auth"}'
+send-msg pm team PROJECT_INIT '{"project_dir":"/code/myapp"}'
+send-msg architect engineer-1 HANDOFF '{"task":"implement auth"}'
 ```
 
 ### check-messages.js
@@ -200,11 +200,11 @@ Check pending messages:
 node tools/check-messages.js [agent-dir] [--clear]
 ```
 
-### get-roster.js
+### get-roster
 
 See who's online:
 ```bash
-node tools/get-roster.js
+get-roster
 ```
 
 ## Configuration
