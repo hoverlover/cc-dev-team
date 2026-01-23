@@ -30,21 +30,17 @@ const XTerminal = forwardRef<XTerminalHandle, XTerminalProps>(({ className, onDa
   const containerRef = useRef<HTMLDivElement>(null)
   const terminalRef = useRef<Terminal | null>(null)
   const [isReady, setIsReady] = useState(false)
-  // Track whether auto-scroll is enabled (disabled when user scrolls up)
-  const autoScrollRef = useRef(true)
-  // Track if we're programmatically scrolling (to ignore scroll events we trigger)
-  const isProgrammaticScrollRef = useRef(false)
+  // Track whether we're pinned to bottom (starts pinned)
+  const pinnedToBottomRef = useRef(true)
 
   useImperativeHandle(actualRef, () => ({
     write: (data: string) => {
       if (terminalRef.current) {
+        // Capture pinned state BEFORE writing (write might trigger onScroll)
+        const shouldScroll = pinnedToBottomRef.current
         terminalRef.current.write(data)
-        // Only auto-scroll if user hasn't scrolled up
-        if (autoScrollRef.current) {
-          isProgrammaticScrollRef.current = true
+        if (shouldScroll) {
           terminalRef.current.scrollToBottom()
-          // Reset flag after a short delay to allow scroll event to fire
-          setTimeout(() => { isProgrammaticScrollRef.current = false }, 50)
         }
       }
     },
@@ -53,11 +49,7 @@ const XTerminal = forwardRef<XTerminalHandle, XTerminalProps>(({ className, onDa
     },
     focus: () => {
       terminalRef.current?.focus()
-      if (autoScrollRef.current) {
-        isProgrammaticScrollRef.current = true
-        terminalRef.current?.scrollToBottom()
-        setTimeout(() => { isProgrammaticScrollRef.current = false }, 50)
-      }
+      // Don't force scroll on focus - respect user's pinned state
     },
     getBuffer: () => {
       if (!terminalRef.current) return ''
@@ -72,10 +64,8 @@ const XTerminal = forwardRef<XTerminalHandle, XTerminalProps>(({ className, onDa
       return lines.join('\n')
     },
     scrollToBottom: () => {
-      autoScrollRef.current = true
-      isProgrammaticScrollRef.current = true
+      pinnedToBottomRef.current = true
       terminalRef.current?.scrollToBottom()
-      setTimeout(() => { isProgrammaticScrollRef.current = false }, 50)
     },
   }), [isReady])
 
@@ -132,36 +122,27 @@ const XTerminal = forwardRef<XTerminalHandle, XTerminalProps>(({ className, onDa
     terminalRef.current = terminal
     setIsReady(true)
 
-    // Handle scroll events to manage auto-scroll behavior
-    // Disable auto-scroll when user scrolls up, re-enable only when they explicitly scroll to very bottom
-    let userScrolledUp = false
-
-    terminal.onScroll(() => {
-      // Ignore scroll events triggered by our own code
-      if (isProgrammaticScrollRef.current) {
-        return
-      }
-
+    // Check if at bottom and update pinned state
+    const checkPinned = () => {
       const buffer = terminal.buffer.active
-      const viewportY = buffer.viewportY
-      const baseY = buffer.baseY
+      const distanceFromBottom = buffer.baseY - buffer.viewportY
+      pinnedToBottomRef.current = distanceFromBottom <= 1
+    }
 
-      // Calculate how far from bottom we are
-      const distanceFromBottom = baseY - viewportY
+    // IMPORTANT: xterm's onScroll does NOT fire on user scroll (known bug)
+    // We must listen to wheel events on the container directly
+    // See: https://github.com/xtermjs/xterm.js/issues/3864
+    const handleWheel = () => {
+      // Use requestAnimationFrame to check after xterm processes the scroll
+      requestAnimationFrame(checkPinned)
+    }
+    containerRef.current.addEventListener('wheel', handleWheel)
 
-      // If user scrolled up at all, mark it and disable auto-scroll
-      if (distanceFromBottom > 0) {
-        userScrolledUp = true
-        autoScrollRef.current = false
-      }
+    // onScroll fires when new lines are added (automatic scroll)
+    terminal.onScroll(checkPinned)
 
-      // Only re-enable auto-scroll if user manually scrolled all the way back to bottom
-      // AND they had previously scrolled up (prevents false positives on initial load)
-      if (userScrolledUp && distanceFromBottom === 0) {
-        autoScrollRef.current = true
-        userScrolledUp = false
-      }
-    })
+    // onLineFeed fires when newlines are written
+    terminal.onLineFeed(checkPinned)
 
     // Handle Shift+Enter for multiline input (sends same as Option+Enter)
     terminal.attachCustomKeyEventHandler((event) => {
@@ -179,11 +160,9 @@ const XTerminal = forwardRef<XTerminalHandle, XTerminalProps>(({ className, onDa
     if (onData) {
       terminal.onData((data) => {
         onData(data)
-        // Scroll to bottom when user types (and re-enable auto-scroll)
-        autoScrollRef.current = true
-        isProgrammaticScrollRef.current = true
+        // Scroll to bottom and re-pin when user types
+        pinnedToBottomRef.current = true
         terminal.scrollToBottom()
-        setTimeout(() => { isProgrammaticScrollRef.current = false }, 50)
       })
     }
 
@@ -195,7 +174,11 @@ const XTerminal = forwardRef<XTerminalHandle, XTerminalProps>(({ className, onDa
       onReady()
     }
 
+    // Capture container for cleanup
+    const container = containerRef.current
+
     return () => {
+      container?.removeEventListener('wheel', handleWheel)
       terminal.dispose()
     }
   }, [onData])
