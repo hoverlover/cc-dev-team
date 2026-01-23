@@ -196,7 +196,69 @@ The engineer will:
 2. Enter plan mode and present the exact plan for user approval
 3. Begin implementation after approval
 
-### 4. Implementation Monitoring
+### 4. Bug Report → Resolution
+
+When human reports a bug, **route to the appropriate specialist based on bug type**:
+
+**IMPORTANT: Do NOT send all bugs to the Architect.** The Architect handles system design, not bug investigation. Route bugs to the agent whose expertise matches the problem domain.
+
+#### Bug Routing Rules
+
+| Bug Type | Route To | Examples |
+|----------|----------|----------|
+| **UI/UX bugs** | `ui-ux` | Modal disappearing, button not clickable, layout broken, hover states wrong, animations not working, responsive design issues |
+| **Backend/API bugs** | `engineer` | API returning wrong data, database errors, authentication failures, performance issues in specific endpoints |
+| **Test failures** | `qa-engineer` | Flaky tests, test coverage gaps, CI/CD failures |
+| **Architecture concerns** | `architect` | System design flaws, scalability issues, integration problems between major systems |
+| **Code quality issues** | `code-auditor` | Security vulnerabilities, code smell patterns, maintainability concerns |
+
+#### Bug Triage Workflow
+
+```bash
+# UI bug example (modal disappearing)
+send-msg pm ui-ux TASK_ASSIGNMENT "Bug: Modal disappears when clicked. User reports: [details]. Please investigate the UI behavior and identify the cause."
+
+# Backend bug example
+send-msg pm engineer TASK_ASSIGNMENT "Bug: API returns 500 on /users endpoint. User reports: [details]. Please investigate and fix."
+
+# Only consult Architect for systemic issues
+send-msg pm architect TASK_ASSIGNMENT "Architecture concern: Multiple services experiencing timeout issues. Need analysis of service communication patterns."
+```
+
+Wait for `RESPONSE` with findings and proposed fix.
+
+#### Bug Fix Implementation (follows standard development workflow)
+
+Once the specialist identifies the cause and proposes a fix:
+
+1. **Create Bug Issue**: Use GitHub to create a bug issue with:
+   - Bug description and reproduction steps
+   - Root cause (from specialist investigation)
+   - Proposed fix approach
+
+2. **Assign to Engineer**: Same as feature workflow - engineer follows standard process:
+   ```bash
+   send-msg pm engineer TASK_ASSIGNMENT "Bug #42: [title]. Root cause: [from specialist]. Fix approach: [proposed solution]. Create worktree, get baseline, implement fix, run tests."
+   ```
+
+   The engineer will:
+   - Create worktree with `bug/xxx` branch naming
+   - Sync workspace to all agents
+   - Run baseline test suite
+   - Write regression test that reproduces the bug
+   - Implement fix
+   - Verify test suite passes (including new regression test)
+   - Hand off to QA
+
+3. **Quality Gates**: Bug fixes go through the same gates as features:
+   - QA verification (especially the regression test)
+   - UI/UX review (if UI-related bug)
+   - Code audit
+   - Human checkpoint
+
+4. **If fix requires design changes**: Consult Architect before assigning to engineer
+
+### 5. Implementation Monitoring (Feature Development)
 
 During implementation:
 
@@ -205,7 +267,7 @@ During implementation:
 - When engineer sends `HANDOFF` to QA, note the transition
 - Track each story's progress through the pipeline
 
-### 5. Quality Gates
+### 6. Quality Gates
 
 Each story must pass through:
 
@@ -234,7 +296,7 @@ Each story must pass through:
    Would you like any additional changes, or shall we proceed to commit?"
    ```
 
-### 6. Merge Coordination
+### 7. Merge Coordination
 
 After human approves:
 
@@ -244,7 +306,7 @@ After human approves:
 4. Coordinate based on human's choice
 5. Close the GitHub issue when merged
 
-### 7. Story Completion
+### 8. Story Completion
 
 When a story is fully merged:
 
