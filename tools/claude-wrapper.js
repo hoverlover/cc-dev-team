@@ -305,8 +305,11 @@ function detectStateTransition(buffer, sm) {
     debug(`Buffer (${text.length} chars): "${sample.slice(0, 200)}"`)
   }
 
-  // Check recent portion of buffer (last ~500 chars) for current state
+  // Check recent portion of buffer for patterns
   const recent = text.slice(-500)
+  // Check very recent output (last 100 chars) for active indicators like spinners
+  // This prevents old spinners in the buffer from blocking idle detection
+  const veryRecent = text.slice(-100)
 
   // Check for permission prompt (highest priority - needs user input)
   if (STATE_PATTERNS.permissionPrompt.test(recent)) {
@@ -316,8 +319,9 @@ function detectStateTransition(buffer, sm) {
     return
   }
 
-  // Check for spinner characters (indicates active processing)
-  const hasSpinner = STATE_PATTERNS.spinnerActive.test(recent)
+  // Check for spinner characters only in very recent output
+  // Old spinners in buffer shouldn't block idle detection
+  const hasSpinner = STATE_PATTERNS.spinnerActive.test(veryRecent)
 
   // Check for thinking text like "Forming…"
   const thinkingMatch = recent.match(STATE_PATTERNS.thinkingText)
