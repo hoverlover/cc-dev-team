@@ -366,6 +366,8 @@ function detectStateTransition(buffer, sm) {
     debug(`Pattern matched: idlePrompt`)
     sm.transition('idle')
     sm.cancelIdleTimeout()
+    // Clear buffer on idle to prevent old content from triggering false positives
+    buffer.clear()
     return
   }
 }
