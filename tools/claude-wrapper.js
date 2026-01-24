@@ -104,124 +104,266 @@ const PROJECT_FILE = join(instanceDir, 'project-dir')
 // Message queue for team message injection
 const messageQueue = []
 
-// Status tracking - parsed from output
-let currentStatus = 'idle'
-let currentTask = ''
-let waitingForInput = false
+// Configuration via environment variables
+const STATUS_IDLE_TIMEOUT_MS = parseInt(process.env.STATUS_IDLE_TIMEOUT_MS) || 3000
+const STATUS_DEBOUNCE_MS = parseInt(process.env.STATUS_DEBOUNCE_MS) || 100
+const STATUS_BUFFER_SIZE = parseInt(process.env.STATUS_BUFFER_SIZE) || 4096
 
-// Patterns to detect status from Claude Code output
-const STATUS_PATTERNS = {
-  // Whimsical thinking indicators with full task description
-  // Captures: "* Adding settings UI toggle... (esc to interrupt · 37s · ↓ 2.1k tokens)" → "Adding settings UI toggle"
-  // Note: Claude includes timing info after "esc to interrupt", so we don't require closing paren
-  thinkingWhimsical: /[*✱]\s*(.+?)\.{3}\s*\(esc to interrupt/i,
-  thinking: /[●•]\s*Thinking|Thinking\.\.\./i,
-  toolUse: /[●•]\s*(Bash|Read|Edit|Write|Glob|Grep|Task|WebFetch|WebSearch|TodoWrite|NotebookEdit)\s*\(/i,
-  waiting: /Waiting\.\.\.|waiting for|Press enter/i,
-  // Permission/input prompts - must be specific patterns, not just keywords
-  // Look for actual prompt structures: numbered menu options, (y/n) prompts, etc.
-  permission: /Do you want to proceed\?\s*$|^\s*❯?\s*\d+\.\s*(Yes|No|Allow|Deny)|allow this action|deny this action|\(y\/n\)\s*$|\[y\/N\]\s*$|\[Y\/n\]\s*$/im,
-  // Brewed/completed indicator
-  complete: /[*✱]\s*Brewed for|[*✱]\s*Cooked for|[✓✔]\s*|Done|Complete/i,
-  // Detect when Claude shows the input prompt (idle state) - the ❯ character or > followed by space/end
-  // But NOT when it's a menu selection like "❯ 1. Yes"
-  idle: /[\r\n][❯>]\s*$/,
+// Ring Buffer for accumulating PTY output
+class RingBuffer {
+  constructor(maxSize = STATUS_BUFFER_SIZE) {
+    this.maxSize = maxSize
+    this.buffer = ''
+    this.lines = []
+  }
+
+  append(data) {
+    // Strip ANSI escape sequences for pattern matching
+    // This covers: CSI sequences, private modes, OSC sequences, and other escapes
+    const cleaned = data
+      .replace(/\x1b\[[0-9;?]*[a-zA-Z]/g, '')  // CSI sequences including private modes
+      .replace(/\x1b\][^\x07]*\x07/g, '')       // OSC sequences (terminated by BEL)
+      .replace(/\x1b\][^\x1b]*\x1b\\/g, '')     // OSC sequences (terminated by ST)
+      .replace(/\x1b[PX^_][^\x1b]*\x1b\\/g, '') // DCS, SOS, PM, APC sequences
+      .replace(/\x1b[\x20-\x2f]*[\x30-\x7e]/g, '') // Other escape sequences
+    this.buffer += cleaned
+    if (this.buffer.length > this.maxSize) {
+      this.buffer = this.buffer.slice(-this.maxSize)
+    }
+    // Track line boundaries
+    this.lines = this.buffer.split(/\r?\n/)
+
+    // Debug: log when we see bullet-like characters
+    if (cleaned.includes('●') || cleaned.includes('•') || cleaned.includes('*')) {
+      const snippet = cleaned.slice(0, 80).replace(/\r/g, '\\r').replace(/\n/g, '\\n')
+      debug(`Bullet-like char in data: "${snippet}"`)
+    }
+  }
+
+  getRecentLines(n) {
+    return this.lines.slice(-n)
+  }
+
+  getLastLine() {
+    return this.lines[this.lines.length - 1] || ''
+  }
+
+  endsWithPrompt() {
+    return /^[❯>]\s*$/.test(this.getLastLine())
+  }
+
+  clear() {
+    this.buffer = ''
+    this.lines = []
+  }
 }
 
-// Parse output for status updates
-function parseStatusFromOutput(data) {
-  // Get only the last portion of output for status detection (last ~500 chars)
-  // This prevents old output from triggering false positives
-  const recentData = data.length > 500 ? data.slice(-500) : data
-
-  // Find the position of the last idle prompt and last activity indicator
-  // Whichever comes last determines the current state
-  const idleMatch = recentData.match(/[\r\n]([❯>])\s*$/m) || recentData.match(/[\r\n]([❯>])\s*[\r\n]*$/m)
-  const whimsicalMatch = recentData.match(STATUS_PATTERNS.thinkingWhimsical)
-  const completionMatch = recentData.match(STATUS_PATTERNS.complete)
-
-  // Check for idle prompt - use last 100 chars for more accuracy
-  const veryRecent = data.length > 100 ? data.slice(-100) : data
-  const hasIdlePrompt = /[\r\n][❯>]\s*$/.test(veryRecent) || /[\r\n][❯>]\s*[\r\n]*$/.test(veryRecent)
-
-  // If we see an idle prompt at the very end, we're definitely idle
-  // (This takes precedence over old whimsical text in the buffer)
-  if (hasIdlePrompt && !/❯\s*\d+\./.test(veryRecent)) {
-    waitingForInput = false
-    currentStatus = 'idle'
-    currentTask = ''
-    debug(`Detected idle prompt`)
-    return { status: 'idle', task: '', waitingForInput: false }
+// State Machine for tracking agent status
+class StatusStateMachine {
+  constructor(emitFn) {
+    this.state = 'idle'
+    this.task = ''
+    this.waitingForInput = false
+    this.stateEnteredAt = Date.now()
+    this.lastEmitAt = 0
+    this.lastEmittedState = null
+    this.emit = emitFn
+    this.idleTimer = null
   }
 
-  // Also check for completion + idle pattern (e.g., "Brewed for X" followed by prompt)
-  if (completionMatch && idleMatch) {
-    const completionPos = recentData.lastIndexOf(completionMatch[0])
-    const idlePos = recentData.lastIndexOf(idleMatch[0])
-    if (idlePos > completionPos) {
-      waitingForInput = false
-      currentStatus = 'idle'
-      currentTask = ''
-      debug(`Detected completion followed by idle`)
-      return { status: 'idle', task: '', waitingForInput: false }
+  // Valid state transitions
+  // Note: Claude can jump between states quickly, so we allow flexible transitions
+  static VALID_TRANSITIONS = {
+    idle: ['thinking', 'working', 'waiting_input'],  // Can start with any activity
+    thinking: ['working', 'waiting_input', 'idle'],
+    working: ['thinking', 'waiting_input', 'idle'],  // Tool can trigger input prompt
+    waiting_input: ['thinking', 'working', 'idle'],  // Input can lead to any state
+    offline: ['idle', 'thinking', 'working']  // Can recover from offline
+  }
+
+  transition(newState, task = '', waitingForInput = false) {
+    // Always allow transition to offline
+    if (newState === 'offline') {
+      this.state = 'offline'
+      this.task = ''
+      this.waitingForInput = false
+      this.stateEnteredAt = Date.now()
+      this.emitIfChanged()
+      return true
+    }
+
+    // Allow self-transitions (updating task while in same state)
+    if (newState === this.state) {
+      // Only update if task changed
+      if (task !== this.task) {
+        this.task = task
+        this.emitIfChanged()
+      }
+      return true
+    }
+
+    // Validate transition is legal
+    const validTargets = StatusStateMachine.VALID_TRANSITIONS[this.state]
+    if (!validTargets?.includes(newState)) {
+      debug(`Invalid transition: ${this.state} → ${newState}`)
+      return false
+    }
+
+    debug(`State transition: ${this.state} → ${newState} (task: ${task || 'none'})`)
+    this.state = newState
+    this.task = task
+    this.waitingForInput = waitingForInput
+    this.stateEnteredAt = Date.now()
+    this.emitIfChanged()
+    return true
+  }
+
+  emitIfChanged() {
+    // Debounce: 100ms minimum between emits
+    const now = Date.now()
+    if (now - this.lastEmitAt < STATUS_DEBOUNCE_MS) {
+      return
+    }
+
+    // Build status object
+    const statusObj = {
+      status: this.state,
+      task: this.task,
+      waitingForInput: this.waitingForInput
+    }
+
+    // Only emit if something actually changed
+    const stateKey = `${this.state}:${this.task}:${this.waitingForInput}`
+    if (stateKey === this.lastEmittedState) {
+      return
+    }
+
+    this.lastEmitAt = now
+    this.lastEmittedState = stateKey
+    this.emit(statusObj)
+  }
+
+  scheduleIdleTimeout() {
+    if (this.idleTimer) {
+      clearTimeout(this.idleTimer)
+    }
+
+    this.idleTimer = setTimeout(() => {
+      // If we're in thinking or working state for too long without updates,
+      // transition to idle (completion may have been missed)
+      if (this.state === 'thinking' || this.state === 'working') {
+        debug(`Idle timeout: transitioning from ${this.state} to idle`)
+        this.transition('idle')
+      }
+    }, STATUS_IDLE_TIMEOUT_MS)
+  }
+
+  cancelIdleTimeout() {
+    if (this.idleTimer) {
+      clearTimeout(this.idleTimer)
+      this.idleTimer = null
     }
   }
+}
 
-  // Check for whimsical thinking indicators with full task description
-  // e.g., "* Adding settings UI toggle... (esc to interrupt)" → "Adding settings UI toggle..."
-  if (whimsicalMatch) {
-    // But only if there's no idle prompt after it
-    const whimsicalPos = recentData.lastIndexOf(whimsicalMatch[0])
-    const idleInRecent = recentData.slice(whimsicalPos).match(/[\r\n][❯>]\s*/)
-    if (!idleInRecent) {
-      waitingForInput = false
-      currentStatus = 'thinking'
-      currentTask = whimsicalMatch[1].trim() + '...'  // Full task description
-      debug(`Detected whimsical thinking: ${currentTask}`)
-      return { status: 'thinking', task: currentTask, waitingForInput: false }
-    }
+// Tightened patterns based on actual Claude Code terminal output
+const STATE_PATTERNS = {
+  // Spinner characters indicate thinking/working
+  // These appear when Claude is processing (includes all whimsical spinner chars)
+  spinnerActive: /[✳✶✢✱✲✴✵✽✾✿·°⊹]/,
+
+  // Thinking text patterns - any word ending in "ing" followed by ellipsis (…)
+  // Claude uses gerunds like "Cogitating…", "Forming…", "Thinking…", etc.
+  thinkingText: /(\w+ing)…/,
+
+  // Tool invocation: exact tool names (may appear differently in stream)
+  toolStart: /(?:Bash|Read|Edit|Write|Glob|Grep|Task|WebFetch|WebSearch|TodoWrite|NotebookEdit|AskUserQuestion|Skill)\s*\(/,
+
+  // Permission prompt: actual permission dialogs (NOT the status bar "accept edits on")
+  // Look for: numbered menu options, (y/n) prompts, "Allow" buttons
+  permissionPrompt: /❯\s*1\.\s*(Yes|Allow|Approve)|Do you want to proceed\?|\(y\/n\)\s*$/i,
+
+  // Completion indicators
+  completion: /Brewed for|Cooked for|✓|Done in/i,
+
+  // Idle indicators: prompt character or response end marker
+  // "⎿" is Claude's response end marker (appears after output completes)
+  // "❯" or ">" at line end indicates prompt ready for input
+  idlePrompt: /[❯>]\s*$|⎿/
+}
+
+// Detect state transitions from buffered output
+function detectStateTransition(buffer, sm) {
+  const text = buffer.buffer
+
+  // Debug: log buffer content periodically (every 2 seconds max)
+  const now = Date.now()
+  if (!detectStateTransition.lastDebug || now - detectStateTransition.lastDebug > 2000) {
+    detectStateTransition.lastDebug = now
+    // Log more of the buffer to see actual content
+    const sample = text.slice(-500).replace(/[\x00-\x1f]/g, c => `[${c.charCodeAt(0)}]`)
+    debug(`Buffer (${text.length} chars): "${sample.slice(0, 200)}"`)
   }
 
-  // Check for tool use
-  const toolMatch = recentData.match(STATUS_PATTERNS.toolUse)
+  // Check recent portion of buffer (last ~500 chars) for current state
+  const recent = text.slice(-500)
+
+  // Check for permission prompt (highest priority - needs user input)
+  if (STATE_PATTERNS.permissionPrompt.test(recent)) {
+    debug(`Pattern matched: permissionPrompt`)
+    sm.transition('waiting_input', 'Permission required', true)
+    sm.cancelIdleTimeout()
+    return
+  }
+
+  // Check for spinner characters (indicates active processing)
+  const hasSpinner = STATE_PATTERNS.spinnerActive.test(recent)
+
+  // Check for thinking text like "Forming…"
+  const thinkingMatch = recent.match(STATE_PATTERNS.thinkingText)
+  if (thinkingMatch) {
+    debug(`Pattern matched: thinkingText -> ${thinkingMatch[0]}`)
+    sm.transition('thinking', thinkingMatch[0])
+    sm.scheduleIdleTimeout()
+    return
+  }
+
+  // Check for tool invocation
+  const toolMatch = recent.match(STATE_PATTERNS.toolStart)
   if (toolMatch) {
-    waitingForInput = false
-    currentStatus = 'working'
-    currentTask = toolMatch[0].replace(/[●•]\s*/, '').trim()
-    return { status: 'working', task: currentTask, waitingForInput: false }
+    debug(`Pattern matched: toolStart -> ${toolMatch[0]}`)
+    sm.transition('working', toolMatch[0])
+    sm.scheduleIdleTimeout()
+    return
   }
 
-  // Check for thinking
-  if (STATUS_PATTERNS.thinking.test(recentData)) {
-    waitingForInput = false
-    currentStatus = 'thinking'
-    currentTask = 'Thinking...'
-    return { status: 'thinking', task: currentTask, waitingForInput: false }
+  // If spinner is active but no specific text, still mark as thinking
+  if (hasSpinner) {
+    if (sm.state === 'idle') {
+      debug(`Pattern matched: spinnerActive`)
+      sm.transition('thinking', 'Processing...')
+      sm.scheduleIdleTimeout()
+      return
+    }
+    // Reset idle timeout while spinner is active
+    sm.scheduleIdleTimeout()
+    return
   }
 
-  // Check for permission prompt - only after ruling out idle/working states
-  // Must match specific prompt patterns, not just keywords
-  if (STATUS_PATTERNS.permission.test(recentData)) {
-    waitingForInput = true
-    currentStatus = 'waiting_input'
-    debug(`Detected permission prompt - waiting for input`)
-    return { status: 'waiting_input', task: 'Permission required', waitingForInput: true }
+  // Check for completion
+  if (STATE_PATTERNS.completion.test(recent)) {
+    debug(`Pattern matched: completion`)
+    sm.scheduleIdleTimeout()
+    return
   }
 
-  // Check for completion (Brewed for..., Cooked for...)
-  if (STATUS_PATTERNS.complete.test(recentData)) {
-    // Don't immediately set to idle - wait for the prompt
-    debug(`Detected completion`)
-    return null
+  // Check for idle prompt (no spinner, prompt visible)
+  if (STATE_PATTERNS.idlePrompt.test(recent) && !hasSpinner) {
+    debug(`Pattern matched: idlePrompt`)
+    sm.transition('idle')
+    sm.cancelIdleTimeout()
+    return
   }
-
-  // Check for waiting
-  if (STATUS_PATTERNS.waiting.test(recentData)) {
-    currentStatus = 'waiting'
-    return { status: 'waiting', task: currentTask, waitingForInput: false }
-  }
-
-  return null
 }
 
 // Input tracking for message injection timing
@@ -385,6 +527,10 @@ const COOLDOWN_MS = 10000
 const CHECK_INTERVAL_MS = 5000
 const IDLE_TIMEOUT_MS = 2000
 
+// Initialize status tracking with state machine
+const outputBuffer = new RingBuffer()
+let stateMachine = null // Initialized after socket connection
+
 // Handle terminal resize (interactive mode only)
 if (!headless) {
   process.stdout.on('resize', () => {
@@ -402,6 +548,17 @@ const socket = io(BROKER_URL, {
 
 socket.on('connect', () => {
   debug(`Socket connected, id: ${socket.id}`)
+
+  // Initialize state machine with socket emit function
+  if (!stateMachine) {
+    stateMachine = new StatusStateMachine((status) => {
+      if (socket.connected) {
+        debug(`Emitting status: ${JSON.stringify(status)}`)
+        socket.emit('agent_status', status)
+      }
+    })
+  }
+
   // Send initial status and terminal size
   socket.emit('agent_ready', {
     role: agentId,
@@ -425,14 +582,16 @@ ptyProcess.onData((data) => {
     process.stdout.write(data)
   }
 
+  // Accumulate output in ring buffer for status detection
+  outputBuffer.append(data)
+
   // Always send to broker for dashboard
   if (socket.connected) {
     socket.emit('agent_output', { data })
 
-    // Parse and emit status updates
-    const statusUpdate = parseStatusFromOutput(data)
-    if (statusUpdate) {
-      socket.emit('agent_status', statusUpdate)
+    // Detect state transitions using buffered output
+    if (stateMachine) {
+      detectStateTransition(outputBuffer, stateMachine)
     }
   }
 })
@@ -449,10 +608,9 @@ if (headless) {
       }
     }
     ptyProcess.write(data)
-    // If we were waiting for input, clear that state
-    if (waitingForInput) {
-      waitingForInput = false
-      socket.emit('agent_status', { status: 'working', waitingForInput: false })
+    // If we were waiting for input, transition to thinking (input received)
+    if (stateMachine && stateMachine.state === 'waiting_input') {
+      stateMachine.transition('thinking', 'Processing input...')
     }
   })
 } else {
@@ -472,7 +630,11 @@ if (headless) {
 // Handle PTY exit
 ptyProcess.onExit(({ exitCode, signal }) => {
   debug(`PTY exited with code ${exitCode}, signal ${signal}`)
-  socket.emit('agent_status', { status: 'offline' })
+  if (stateMachine) {
+    stateMachine.transition('offline')
+  } else {
+    socket.emit('agent_status', { status: 'offline' })
+  }
   socket.disconnect()
   process.exit(exitCode)
 })
@@ -574,14 +736,24 @@ setInterval(checkAndInject, CHECK_INTERVAL_MS)
 // Graceful shutdown
 process.on('SIGINT', () => {
   debug('Received SIGINT')
-  socket.emit('agent_status', { status: 'offline' })
+  if (stateMachine) {
+    stateMachine.cancelIdleTimeout()
+    stateMachine.transition('offline')
+  } else {
+    socket.emit('agent_status', { status: 'offline' })
+  }
   socket.disconnect()
   ptyProcess.kill()
 })
 
 process.on('SIGTERM', () => {
   debug('Received SIGTERM')
-  socket.emit('agent_status', { status: 'offline' })
+  if (stateMachine) {
+    stateMachine.cancelIdleTimeout()
+    stateMachine.transition('offline')
+  } else {
+    socket.emit('agent_status', { status: 'offline' })
+  }
   socket.disconnect()
   ptyProcess.kill()
 })
