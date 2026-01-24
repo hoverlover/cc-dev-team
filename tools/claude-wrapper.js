@@ -307,9 +307,9 @@ function detectStateTransition(buffer, sm) {
 
   // Check recent portion of buffer for patterns
   const recent = text.slice(-500)
-  // Check very recent output (last 100 chars) for active indicators like spinners
-  // This prevents old spinners in the buffer from blocking idle detection
-  const veryRecent = text.slice(-100)
+  // Check very end of buffer (last 30 chars) for active spinner animation
+  // Spinners appear at the end when Claude is actively processing
+  const bufferEnd = text.slice(-30)
 
   // Check for permission prompt (highest priority - needs user input)
   if (STATE_PATTERNS.permissionPrompt.test(recent)) {
@@ -319,9 +319,9 @@ function detectStateTransition(buffer, sm) {
     return
   }
 
-  // Check for spinner characters only in very recent output
-  // Old spinners in buffer shouldn't block idle detection
-  const hasSpinner = STATE_PATTERNS.spinnerActive.test(veryRecent)
+  // Check for spinner characters only at the very end of buffer
+  // Spinners appear at the end during active animation
+  const hasSpinner = STATE_PATTERNS.spinnerActive.test(bufferEnd)
 
   // Check for thinking text like "Forming…"
   const thinkingMatch = recent.match(STATE_PATTERNS.thinkingText)
