@@ -22,7 +22,7 @@ interface XTerminalHandle {
 }
 
 interface Message {
-  id: number
+  id: number | string
   created_at: string
   session_id?: string
   from_agent: string
@@ -440,7 +440,7 @@ export default function Dashboard() {
             [sessionId]: {
               ...state,
               messages: [...state.messages, {
-                id: Date.now(),
+                id: crypto.randomUUID(),
                 created_at: new Date().toISOString(),
                 session_id: sessionId,
                 from_agent: 'system',
@@ -472,7 +472,7 @@ export default function Dashboard() {
             agents: newAgents,
             agentStatuses: restStatuses,
             messages: [...state.messages, {
-              id: Date.now(),
+              id: crypto.randomUUID(),
               created_at: new Date().toISOString(),
               session_id: sessionId,
               from_agent: 'system',
