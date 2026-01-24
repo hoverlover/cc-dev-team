@@ -127,6 +127,17 @@ export default function Dashboard() {
     selectedAgentRef.current = state?.selectedAgent || null
   }, [activeSessionId, sessionStates])
 
+  // Unsubscribe from agent output when switching away from nodes view
+  // This ensures the buffer is replayed when switching back
+  useEffect(() => {
+    if (viewMode === 'chat' && socketRef.current && selectedAgentRef.current && activeSessionIdRef.current) {
+      socketRef.current.emit('unsubscribe_output', {
+        sessionId: activeSessionIdRef.current,
+        agent: selectedAgentRef.current
+      })
+    }
+  }, [viewMode])
+
   // Get current session state
   const currentSessionState = activeSessionId ? sessionStates[activeSessionId] : null
   const currentSession = sessions.find(s => s.id === activeSessionId)
