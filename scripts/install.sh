@@ -137,10 +137,4 @@ chmod +x "$ORCHESTRATOR_DIR/scripts/"*.sh
 chmod +x "$ORCHESTRATOR_DIR/tools/claude-wrapper.js"
 
 echo ""
-echo "Installation complete!"
-echo ""
-echo "To start the system:"
-echo "  1. Start the broker:  $ORCHESTRATOR_DIR/scripts/start-broker.sh"
-echo "  2. Start PM agent:    cd <your-project> && $ORCHESTRATOR_DIR/scripts/start-pm.sh"
-echo "  3. Start other agents: $ORCHESTRATOR_DIR/scripts/start-agent.sh <role>"
-echo ""
+echo "Configuration complete!"

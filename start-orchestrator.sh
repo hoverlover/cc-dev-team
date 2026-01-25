@@ -128,7 +128,7 @@ fi
 
 echo ""
 echo -e "${GREEN}╔════════════════════════════════════════════════════════════╗${NC}"
-echo -e "${GREEN}║                 ORCHESTRATOR READY                         ║${NC}"
+echo -e "${GREEN}║           ORCHESTRATOR READY (v${VERSION})                      ║${NC}"
 echo -e "${GREEN}╠════════════════════════════════════════════════════════════╣${NC}"
 echo -e "${GREEN}║  Dashboard: http://localhost:3101                          ║${NC}"
 echo -e "${GREEN}║  Broker:    http://localhost:3100                          ║${NC}"
