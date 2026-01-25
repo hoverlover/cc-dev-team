@@ -21,9 +21,12 @@ NEW_VERSION=$(node -p "require('./package.json').version")
 
 echo "Bumping $OLD_VERSION → $NEW_VERSION"
 
-# Commit and tag from root
+# Also bump root package.json to keep versions in sync
 cd "$ROOT_DIR"
-git add installer/package.json
+npm version "$NEW_VERSION" --no-git-tag-version --allow-same-version
+
+# Commit and tag from root
+git add installer/package.json package.json
 git commit -m "Bump installer to v$NEW_VERSION"
 git tag "v$NEW_VERSION"
 git push origin main
