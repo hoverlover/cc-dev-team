@@ -39,4 +39,4 @@ echo "Publishing to npm..."
 npm publish --access public
 
 echo ""
-echo "✓ Published @hoverlover/cc-agent-orchestration v$NEW_VERSION"
+echo "✓ Published @hoverlover/cc-dev-team v$NEW_VERSION"

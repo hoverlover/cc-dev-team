@@ -3,7 +3,7 @@
   "configVersion": 1,
   "workspaces": {
     "": {
-      "name": "agentic-orchestrator-dashboard",
+      "name": "cc-dev-team-dashboard",
       "dependencies": {
         "@xterm/addon-fit": "^0.10.0",
         "@xterm/addon-web-links": "^0.11.0",

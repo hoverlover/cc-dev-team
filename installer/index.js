@@ -6,8 +6,8 @@ import { homedir } from 'os';
 import { join } from 'path';
 import readline from 'readline';
 
-const INSTALL_DIR = join(homedir(), '.cc-agent-orchestration');
-const REPO_URL = 'https://github.com/hoverlover/cc-agent-orchestration.git';
+const INSTALL_DIR = join(homedir(), '.cc-dev-team');
+const REPO_URL = 'https://github.com/hoverlover/cc-dev-team.git';
 
 // ANSI colors
 const colors = {
@@ -227,7 +227,7 @@ async function update() {
 }
 
 function start() {
-  logStep('Starting CC Agent Orchestration...');
+  logStep('Starting CC Dev Team...');
 
   log(`\n${colors.bright}Dashboard:${colors.reset} http://localhost:3101`);
   log(`${colors.bright}Broker:${colors.reset}    http://localhost:3100\n`);
@@ -252,7 +252,7 @@ function start() {
 async function main() {
   console.log(`
 ${colors.cyan}╔═══════════════════════════════════════╗
-║       CC Agent Orchestration          ║
+║            CC Dev Team                ║
 ║   Multi-Agent Collaboration for       ║
 ║           Claude Code                 ║
 ╚═══════════════════════════════════════╝${colors.reset}

@@ -1,4 +1,4 @@
-# CC Agent Orchestration
+# CC Dev Team
 
 A multi-agent orchestration system that enables teams of AI agents to collaborate on software development tasks. Built on top of [Claude Code](https://claude.ai/code), it allows a human developer to work with a **Product Manager agent** that coordinates specialized sub-agents (Architect, Engineer, QA, etc.) running in parallel Claude Code sessions.
 
@@ -69,12 +69,12 @@ A multi-agent orchestration system that enables teams of AI agents to collaborat
 Run this single command to install and start:
 
 ```bash
-bunx @hoverlover/cc-agent-orchestration
+bunx @hoverlover/cc-dev-team
 ```
 
 That's it! This will:
 - Check prerequisites
-- Install to `~/.cc-agent-orchestration` (first run only)
+- Install to `~/.cc-dev-team` (first run only)
 - Check for updates (subsequent runs)
 - Start the broker, dashboard, and all agents
 
@@ -86,8 +86,8 @@ If you prefer to clone the repository manually:
 
 ```bash
 # Clone the repository
-git clone https://github.com/hoverlover/cc-agent-orchestration.git
-cd cc-agent-orchestration
+git clone https://github.com/hoverlover/cc-dev-team.git
+cd cc-dev-team
 
 # Run the install script
 ./scripts/install.sh
@@ -109,11 +109,11 @@ For development or debugging, you can start components separately:
 
 # Terminal 3: Start the PM (from your project directory)
 cd /path/to/your/project
-~/.cc-agent-orchestration/scripts/start-pm.sh
+~/.cc-dev-team/scripts/start-pm.sh
 
 # Terminal 4+: Start sub-agents
-~/.cc-agent-orchestration/scripts/start-agent.sh architect
-~/.cc-agent-orchestration/scripts/start-agent.sh engineer
+~/.cc-dev-team/scripts/start-agent.sh architect
+~/.cc-dev-team/scripts/start-agent.sh engineer
 ```
 
 ## Usage
@@ -184,7 +184,7 @@ All messages are persisted to SQLite for history and debugging.
 ## Project Structure
 
 ```
-cc-agent-orchestration/
+cc-dev-team/
 ├── agents/                 # Agent personas and configurations
 │   ├── pm/                 # Product Manager
 │   ├── architect/          # System Architect
