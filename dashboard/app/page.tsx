@@ -667,7 +667,7 @@ export default function Dashboard() {
                     <div
                       key={agent}
                       className={`${styles.agentCard} ${isSelected ? styles.selected : ''} ${needsInput ? styles.needsInput : ''}`}
-                      onClick={() => handleSelectAgent(isSelected ? null : agent)}
+                      onClick={() => !isSelected && handleSelectAgent(agent)}
                     >
                       <div className={styles.agentCardHeader}>
                         <span className={`${styles.statusDot} ${styles[status.status] || styles.idle} ${needsInput ? styles.needsInput : ''}`} />

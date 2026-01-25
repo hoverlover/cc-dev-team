@@ -17,7 +17,7 @@ cd "$ORCHESTRATOR_DIR"
 npm install
 
 # Generate settings.json for each agent
-AGENTS="pm architect engineer qa code-auditor"
+AGENTS="pm architect engineer qa-engineer ui-ux code-auditor"
 
 for agent in $AGENTS; do
   AGENT_DIR="$ORCHESTRATOR_DIR/agents/$agent"
