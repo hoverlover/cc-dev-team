@@ -19,7 +19,7 @@ A multi-agent orchestration system that enables teams of AI agents to collaborat
 - **Claude Code Integration** - Each agent is a full Claude Code session with access to all its capabilities
 
 <!-- SCREENSHOT: Agent terminals showing collaboration -->
-![Agents Collaborating](docs/images/agents-collaborating.png)
+![Agents Collaborating](docs/images/agents-collaborating.gif)
 
 ## How It Works
 
