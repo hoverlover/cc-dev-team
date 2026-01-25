@@ -12,4 +12,10 @@ if [ ! -d "node_modules" ]; then
   bun install
 fi
 
-bun run dev
+# Build if needed (production mode)
+if [ ! -d ".next" ]; then
+  echo "Building dashboard..."
+  bun run build
+fi
+
+bun run start

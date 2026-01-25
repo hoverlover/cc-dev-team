@@ -131,9 +131,15 @@ function install() {
     stdio: 'inherit'
   });
 
-  // Install dashboard dependencies
+  // Install dashboard dependencies and build
   log('  Installing dashboard...');
   execSync('bun install', {
+    cwd: join(INSTALL_DIR, 'dashboard'),
+    stdio: 'inherit'
+  });
+
+  log('  Building dashboard...');
+  execSync('bun run build', {
     cwd: join(INSTALL_DIR, 'dashboard'),
     stdio: 'inherit'
   });
