@@ -29,23 +29,12 @@ for agent in $AGENTS; do
   echo "Generating $SETTINGS_FILE..."
 
   if [ "$agent" = "pm" ]; then
-    # PM agent gets additional plugin and permission configuration
+    # PM agent gets additional permissions and allowExternalMdIncludes
     cat > "$SETTINGS_FILE" << EOF
 {
   "allowExternalMdIncludes": [
     "$ORCHESTRATOR_DIR/docs/*"
   ],
-  "extraKnownMarketplaces": {
-    "pm-local": {
-      "source": {
-        "source": "directory",
-        "path": "$ORCHESTRATOR_DIR/agents/pm/plugins"
-      }
-    }
-  },
-  "enabledPlugins": {
-    "pm-skills@pm-local": true
-  },
   "hooks": {
     "SessionStart": [
       {
