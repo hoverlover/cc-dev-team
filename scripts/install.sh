@@ -72,7 +72,7 @@ for agent in $AGENTS; do
 }
 EOF
   else
-    # Other agents get base configuration
+    # Other agents get base configuration with orchestrator tool permissions
     cat > "$SETTINGS_FILE" << EOF
 {
   "hooks": {
@@ -96,6 +96,16 @@ EOF
           }
         ]
       }
+    ]
+  },
+  "permissions": {
+    "allow": [
+      "Bash(send-msg:*)",
+      "Bash(sync-workspace:*)",
+      "Bash(get-roster)",
+      "Bash(git:*)",
+      "Bash(cd:*)",
+      "Bash(gh:*)"
     ]
   }
 }
