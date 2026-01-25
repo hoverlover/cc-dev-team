@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState, useEffect, useCallback } from 'react'
+import React, { useState, useEffect, useCallback, useRef } from 'react'
 import { Socket } from 'socket.io-client'
 import styles from './ProjectPicker.module.css'
 
@@ -25,24 +25,46 @@ interface ProjectPickerProps {
   onSelectProject: (projectDir: string, projectName: string, agents: string[]) => void
 }
 
-const AVAILABLE_AGENTS = [
-  { id: 'pm', name: 'Product Manager', description: 'Coordinates the team and manages tasks' },
-  { id: 'architect', name: 'Architect', description: 'Designs system architecture' },
-  { id: 'engineer', name: 'Engineer', description: 'Implements features and fixes bugs' },
-  { id: 'qa-engineer', name: 'QA Engineer', description: 'Tests and validates quality' },
-  { id: 'ui-ux', name: 'UI/UX Expert', description: 'Designs user interfaces' },
-  { id: 'code-auditor', name: 'Code Auditor', description: 'Reviews code quality and security' },
-]
+// All agents are launched by default - PM decides who to involve based on the task
+const ALL_AGENTS = ['pm', 'architect', 'engineer', 'qa-engineer', 'ui-ux', 'code-auditor']
 
 export default function ProjectPicker({ socket, isOpen, onClose, onSelectProject }: ProjectPickerProps) {
-  const [currentPath, setCurrentPath] = useState<string>('')
+  const [loadedPath, setLoadedPath] = useState<string>('') // The actual loaded directory
+  const [inputPath, setInputPath] = useState<string>('') // What user types in the input
   const [items, setItems] = useState<DirectoryItem[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [selectedAgents, setSelectedAgents] = useState<Set<string>>(new Set(['pm']))
   const [projectName, setProjectName] = useState('')
+  const [highlightedIndex, setHighlightedIndex] = useState<number>(-1)
+  const listRef = useRef<HTMLDivElement>(null)
 
-  const loadDirectory = useCallback((path: string) => {
+  // Derive filter from input path - if user types beyond the loaded path, use suffix as filter
+  const getFilter = (): string => {
+    if (!inputPath.startsWith(loadedPath)) return ''
+    const suffix = inputPath.slice(loadedPath.length)
+    // Remove leading slash if present
+    return suffix.startsWith('/') ? suffix.slice(1) : suffix
+  }
+
+  const filter = getFilter()
+  const filteredItems = filter
+    ? items.filter(item => item.name.toLowerCase().includes(filter.toLowerCase()))
+    : items
+
+  // Reset highlight when filter changes
+  useEffect(() => {
+    setHighlightedIndex(-1)
+  }, [filter])
+
+  // Scroll highlighted item into view
+  useEffect(() => {
+    if (highlightedIndex >= 0 && listRef.current) {
+      const items = listRef.current.querySelectorAll('[data-item]')
+      items[highlightedIndex]?.scrollIntoView({ block: 'nearest' })
+    }
+  }, [highlightedIndex])
+
+  const loadDirectory = useCallback((path: string, keepTrailingSlash = false) => {
     if (!socket) return
 
     setLoading(true)
@@ -53,7 +75,9 @@ export default function ProjectPicker({ socket, isOpen, onClose, onSelectProject
       if (result.error) {
         setError(result.error)
       } else {
-        setCurrentPath(result.path)
+        setLoadedPath(result.path)
+        // Add trailing slash if requested (for seamless typing experience)
+        setInputPath(keepTrailingSlash ? result.path + '/' : result.path)
         setItems(result.items)
         // Set default project name from directory name
         const dirName = result.path.split('/').pop() || ''
@@ -76,36 +100,71 @@ export default function ProjectPicker({ socket, isOpen, onClose, onSelectProject
   }
 
   const handleGoUp = () => {
-    if (currentPath) {
-      const parent = currentPath.split('/').slice(0, -1).join('/') || '/'
+    if (loadedPath) {
+      const parent = loadedPath.split('/').slice(0, -1).join('/') || '/'
       loadDirectory(parent)
     }
   }
 
-  const handleToggleAgent = (agentId: string) => {
-    setSelectedAgents(prev => {
-      const next = new Set(prev)
-      if (next.has(agentId)) {
-        // Don't allow deselecting PM - it's required
-        if (agentId !== 'pm') {
-          next.delete(agentId)
-        }
-      } else {
-        next.add(agentId)
-      }
-      return next
-    })
-  }
-
   const handleSelectProject = () => {
-    if (currentPath && projectName) {
-      onSelectProject(currentPath, projectName, Array.from(selectedAgents))
+    if (loadedPath && projectName) {
+      onSelectProject(loadedPath, projectName, ALL_AGENTS)
     }
   }
 
   const handlePathInput = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === 'Enter') {
-      loadDirectory((e.target as HTMLInputElement).value)
+    if (e.key === 'ArrowDown') {
+      e.preventDefault()
+      // First arrow down goes to 0, subsequent ones increment
+      setHighlightedIndex(prev =>
+        prev < filteredItems.length - 1 ? prev + 1 : prev
+      )
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault()
+      setHighlightedIndex(prev => prev > 0 ? prev - 1 : -1)
+    } else if (e.key === 'Enter') {
+      // If an item is highlighted, navigate to it
+      if (highlightedIndex >= 0 && filteredItems[highlightedIndex]?.isDirectory) {
+        loadDirectory(filteredItems[highlightedIndex].path, true)
+        setHighlightedIndex(-1)
+      } else if (highlightedIndex >= 0 && filteredItems[highlightedIndex]) {
+        // Non-directory item highlighted - just clear highlight
+        setHighlightedIndex(-1)
+      } else {
+        // No highlight - try to navigate to typed path
+        loadDirectory(inputPath)
+      }
+    } else if (e.key === 'Escape') {
+      // Clear highlight
+      setHighlightedIndex(-1)
+    }
+  }
+
+  const handleInputChange = (newValue: string) => {
+    const oldValue = inputPath
+    setInputPath(newValue)
+
+    // Check if user typed a slash - try to navigate into matching directory
+    if (newValue.endsWith('/') && !oldValue.endsWith('/')) {
+      const pathWithoutSlash = newValue.slice(0, -1)
+      // Check if this matches a directory in current listing
+      const matchingDir = items.find(
+        item => item.isDirectory && item.path === pathWithoutSlash
+      )
+      if (matchingDir) {
+        loadDirectory(matchingDir.path, true) // Keep trailing slash for seamless typing
+        return
+      }
+    }
+
+    // Check if user backspaced past the loaded directory - navigate up
+    if (newValue.length < oldValue.length && loadedPath && !newValue.startsWith(loadedPath)) {
+      // Find the parent directory from the new input
+      const lastSlash = newValue.lastIndexOf('/')
+      if (lastSlash >= 0) {
+        const parentPath = newValue.slice(0, lastSlash) || '/'
+        loadDirectory(parentPath)
+      }
     }
   }
 
@@ -120,59 +179,41 @@ export default function ProjectPicker({ socket, isOpen, onClose, onSelectProject
         </div>
 
         <div className={styles.pathBar}>
-          <button className={styles.upButton} onClick={handleGoUp} disabled={currentPath === '/'}>
+          <button className={styles.upButton} onClick={handleGoUp} disabled={loadedPath === '/'}>
             ..
           </button>
           <input
             type="text"
             className={styles.pathInput}
-            value={currentPath}
-            onChange={e => setCurrentPath(e.target.value)}
+            value={inputPath}
+            onChange={e => handleInputChange(e.target.value)}
             onKeyDown={handlePathInput}
-            placeholder="Enter path..."
+            placeholder="Enter path or filter..."
           />
-          <button className={styles.goButton} onClick={() => loadDirectory(currentPath)}>
+          <button className={styles.goButton} onClick={() => loadDirectory(inputPath)}>
             Go
           </button>
         </div>
 
         <div className={styles.content}>
-          <div className={styles.fileList}>
+          <div className={styles.fileList} ref={listRef}>
             {loading && <div className={styles.loading}>Loading...</div>}
             {error && <div className={styles.error}>{error}</div>}
-            {!loading && !error && items.length === 0 && (
-              <div className={styles.empty}>Empty directory</div>
+            {!loading && !error && filteredItems.length === 0 && (
+              <div className={styles.empty}>{filter ? 'No matches' : 'Empty directory'}</div>
             )}
-            {!loading && !error && items.map(item => (
+            {!loading && !error && filteredItems.map((item, index) => (
               <div
                 key={item.path}
-                className={`${styles.item} ${item.isDirectory ? styles.directory : styles.file}`}
+                data-item
+                className={`${styles.item} ${item.isDirectory ? styles.directory : styles.file} ${index === highlightedIndex ? styles.highlighted : ''}`}
                 onClick={() => handleNavigate(item)}
+                onMouseEnter={() => setHighlightedIndex(index)}
               >
                 <span className={styles.icon}>{item.isDirectory ? '📁' : '📄'}</span>
                 <span className={styles.name}>{item.name}</span>
               </div>
             ))}
-          </div>
-
-          <div className={styles.agentSelection}>
-            <h3>Select Agents to Launch</h3>
-            <div className={styles.agentList}>
-              {AVAILABLE_AGENTS.map(agent => (
-                <label key={agent.id} className={styles.agentOption}>
-                  <input
-                    type="checkbox"
-                    checked={selectedAgents.has(agent.id)}
-                    onChange={() => handleToggleAgent(agent.id)}
-                    disabled={agent.id === 'pm'} // PM is required
-                  />
-                  <div className={styles.agentInfo}>
-                    <span className={styles.agentName}>{agent.name}</span>
-                    <span className={styles.agentDesc}>{agent.description}</span>
-                  </div>
-                </label>
-              ))}
-            </div>
           </div>
         </div>
 
@@ -187,7 +228,7 @@ export default function ProjectPicker({ socket, isOpen, onClose, onSelectProject
             />
           </div>
           <div className={styles.selectedPath}>
-            <strong>Selected:</strong> {currentPath || 'None'}
+            <strong>Selected:</strong> {loadedPath || 'None'}
           </div>
           <div className={styles.actions}>
             <button className={styles.cancelButton} onClick={onClose}>
@@ -196,9 +237,9 @@ export default function ProjectPicker({ socket, isOpen, onClose, onSelectProject
             <button
               className={styles.selectButton}
               onClick={handleSelectProject}
-              disabled={!currentPath || !projectName}
+              disabled={!loadedPath || !projectName}
             >
-              Open Project ({selectedAgents.size} agent{selectedAgents.size !== 1 ? 's' : ''})
+              Open Project
             </button>
           </div>
         </div>

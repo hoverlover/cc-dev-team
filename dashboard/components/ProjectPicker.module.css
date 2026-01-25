@@ -136,6 +136,23 @@
   background: var(--bg-tertiary);
 }
 
+.item.highlighted,
+.item.highlighted.directory,
+.item.highlighted.file {
+  background: var(--accent-secondary);
+  color: var(--bg-primary);
+}
+
+.item.highlighted .name,
+.item.highlighted.directory .name,
+.item.highlighted.file .name {
+  color: var(--bg-primary);
+}
+
+.item.highlighted .icon {
+  filter: brightness(0) invert(1);
+}
+
 .directory {
   color: var(--accent-secondary);
 }
