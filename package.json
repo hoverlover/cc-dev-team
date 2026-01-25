@@ -8,7 +8,8 @@
     "start": "./start-orchestrator.sh",
     "broker": "node broker/server.js",
     "//broker": "Uses node instead of bun because better-sqlite3 native module is not supported in Bun",
-    "dashboard": "cd dashboard && bun run dev"
+    "dashboard": "cd dashboard && bun run dev",
+    "release": "./scripts/release.sh"
   },
   "dependencies": {
     "@lydell/node-pty-darwin-arm64": "^1.2.0-beta.7",
