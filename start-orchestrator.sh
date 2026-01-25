@@ -30,10 +30,15 @@ NC='\033[0m' # No Color
 # Default settings
 START_BROKER=true
 START_DASHBOARD=true
+DEV_MODE=false
 
 # Parse arguments
 while [[ $# -gt 0 ]]; do
   case $1 in
+    --dev)
+      DEV_MODE=true
+      shift
+      ;;
     --no-broker)
       START_BROKER=false
       shift
@@ -46,6 +51,7 @@ while [[ $# -gt 0 ]]; do
       echo "Usage: $0 [options]"
       echo ""
       echo "Options:"
+      echo "  --dev            Run dashboard in development mode (hot reload)"
       echo "  --no-broker      Skip starting the broker (if already running)"
       echo "  --no-dashboard   Skip starting the dashboard (if already running)"
       echo "  --help           Show this help message"
@@ -106,12 +112,18 @@ fi
 if [ "$START_DASHBOARD" = true ]; then
   echo -e "${YELLOW}Starting dashboard...${NC}"
   cd "$SCRIPT_DIR/dashboard"
-  # Build if needed (production mode)
-  if [ ! -d ".next" ]; then
-    echo -e "${YELLOW}Building dashboard (first run)...${NC}"
-    bun run build
+
+  if [ "$DEV_MODE" = true ]; then
+    # Development mode - hot reload
+    bun run dev &
+  else
+    # Production mode - build if needed
+    if [ ! -d ".next" ]; then
+      echo -e "${YELLOW}Building dashboard (first run)...${NC}"
+      bun run build
+    fi
+    bun run start &
   fi
-  bun run start &
   DASHBOARD_PID=$!
   PIDS+=($DASHBOARD_PID)
   sleep 3
