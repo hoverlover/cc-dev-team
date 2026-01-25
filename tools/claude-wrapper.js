@@ -105,7 +105,7 @@ const PROJECT_FILE = join(instanceDir, 'project-dir')
 const messageQueue = []
 
 // Configuration via environment variables
-const STATUS_IDLE_TIMEOUT_MS = parseInt(process.env.STATUS_IDLE_TIMEOUT_MS) || 3000
+const STATUS_IDLE_TIMEOUT_MS = parseInt(process.env.STATUS_IDLE_TIMEOUT_MS) || 1500
 const STATUS_DEBOUNCE_MS = parseInt(process.env.STATUS_DEBOUNCE_MS) || 100
 const STATUS_BUFFER_SIZE = parseInt(process.env.STATUS_BUFFER_SIZE) || 4096
 
@@ -158,17 +158,28 @@ class RingBuffer {
   }
 }
 
+// Spinner characters for animation (matching Claude Code style)
+const SPINNER_CHARS = ['✳', '✶', '✢', '✱', '✲', '✴', '✵', '✽', '✾', '✿']
+const SPINNER_INTERVAL_MS = 200
+
 // State Machine for tracking agent status
 class StatusStateMachine {
   constructor(emitFn) {
     this.state = 'idle'
     this.task = ''
+    this.taskBase = '' // Task text without spinner prefix
     this.waitingForInput = false
     this.stateEnteredAt = Date.now()
     this.lastEmitAt = 0
     this.lastEmittedState = null
     this.emit = emitFn
     this.idleTimer = null
+    this.spinnerTimer = null
+    this.spinnerIndex = 0
+    // Track last thinking text to prevent re-triggering on stale content
+    this.lastThinkingText = ''
+    this.lastThinkingSeenAt = 0
+    this.idleTransitionAt = 0  // When we last went idle
   }
 
   // Valid state transitions
@@ -184,8 +195,10 @@ class StatusStateMachine {
   transition(newState, task = '', waitingForInput = false) {
     // Always allow transition to offline
     if (newState === 'offline') {
+      this.stopSpinner()
       this.state = 'offline'
       this.task = ''
+      this.taskBase = ''
       this.waitingForInput = false
       this.stateEnteredAt = Date.now()
       this.emitIfChanged()
@@ -194,10 +207,17 @@ class StatusStateMachine {
 
     // Allow self-transitions (updating task while in same state)
     if (newState === this.state) {
-      // Only update if task changed
-      if (task !== this.task) {
-        this.task = task
-        this.emitIfChanged()
+      // Only update if task base changed
+      if (task !== this.taskBase) {
+        if (newState === 'thinking' || newState === 'working') {
+          this.startSpinner(task)
+        } else {
+          // Stop spinner when in non-spinner state (idle, waiting_input)
+          this.stopSpinner()
+          this.task = task
+          this.taskBase = task
+          this.emitIfChanged()
+        }
       }
       return true
     }
@@ -211,19 +231,45 @@ class StatusStateMachine {
 
     debug(`State transition: ${this.state} → ${newState} (task: ${task || 'none'})`)
     this.state = newState
-    this.task = task
     this.waitingForInput = waitingForInput
     this.stateEnteredAt = Date.now()
-    this.emitIfChanged()
+
+    // Start/stop spinner based on state
+    if (newState === 'thinking' || newState === 'working') {
+      this.lastThinkingText = task
+      this.lastThinkingSeenAt = Date.now()
+      this.startSpinner(task)
+    } else {
+      // Track when we go idle
+      if (newState === 'idle') {
+        this.idleTransitionAt = Date.now()
+      }
+      this.stopSpinner()
+      this.task = task
+      this.taskBase = task
+      this.emitIfChanged()
+    }
+
     return true
   }
 
-  emitIfChanged() {
-    // Debounce: 100ms minimum between emits
+  // Check if thinking text should be ignored (stale repeated content)
+  shouldIgnoreThinkingText(text) {
     const now = Date.now()
-    if (now - this.lastEmitAt < STATUS_DEBOUNCE_MS) {
-      return
+    const timeSinceIdle = now - this.idleTransitionAt
+    const isSameText = text === this.lastThinkingText
+
+    // If we went idle recently (within 5 seconds) and see the same thinking text,
+    // it's probably stale terminal content being re-rendered
+    if (this.state === 'idle' && isSameText && timeSinceIdle < 5000) {
+      debug(`Ignoring stale thinking text "${text}" (${timeSinceIdle}ms since idle)`)
+      return true
     }
+    return false
+  }
+
+  emitIfChanged() {
+    const now = Date.now()
 
     // Build status object
     const statusObj = {
@@ -238,12 +284,21 @@ class StatusStateMachine {
       return
     }
 
+    // Check if this is a STATE change (not just task/spinner update)
+    const lastState = this.lastEmittedState?.split(':')[0]
+    const isStateChange = lastState !== this.state
+
+    // Debounce spinner updates (same state, different task), but ALWAYS emit state changes
+    if (!isStateChange && now - this.lastEmitAt < STATUS_DEBOUNCE_MS) {
+      return
+    }
+
     this.lastEmitAt = now
     this.lastEmittedState = stateKey
     this.emit(statusObj)
   }
 
-  scheduleIdleTimeout() {
+  scheduleIdleTimeout(buffer) {
     if (this.idleTimer) {
       clearTimeout(this.idleTimer)
     }
@@ -254,6 +309,8 @@ class StatusStateMachine {
       if (this.state === 'thinking' || this.state === 'working') {
         debug(`Idle timeout: transitioning from ${this.state} to idle`)
         this.transition('idle')
+        // Clear buffer to prevent old thinking text from retriggering
+        if (buffer) buffer.clear()
       }
     }, STATUS_IDLE_TIMEOUT_MS)
   }
@@ -264,17 +321,45 @@ class StatusStateMachine {
       this.idleTimer = null
     }
   }
+
+  startSpinner(taskBase) {
+    this.taskBase = taskBase
+    this.spinnerIndex = 0
+    this.updateSpinnerTask()
+
+    // Clear any existing spinner timer
+    if (this.spinnerTimer) {
+      clearInterval(this.spinnerTimer)
+    }
+
+    // Start spinner animation
+    this.spinnerTimer = setInterval(() => {
+      this.spinnerIndex = (this.spinnerIndex + 1) % SPINNER_CHARS.length
+      this.updateSpinnerTask()
+    }, SPINNER_INTERVAL_MS)
+  }
+
+  updateSpinnerTask() {
+    const spinner = SPINNER_CHARS[this.spinnerIndex]
+    this.task = `${spinner} ${this.taskBase}`
+    this.emitIfChanged()
+  }
+
+  stopSpinner() {
+    if (this.spinnerTimer) {
+      clearInterval(this.spinnerTimer)
+      this.spinnerTimer = null
+    }
+  }
 }
 
 // Tightened patterns based on actual Claude Code terminal output
 const STATE_PATTERNS = {
-  // Spinner characters indicate thinking/working
-  // These appear when Claude is processing (includes all whimsical spinner chars)
-  spinnerActive: /[✳✶✢✱✲✴✵✽✾✿·°⊹]/,
-
-  // Thinking text patterns - any word ending in "ing" followed by ellipsis (…)
-  // Claude uses gerunds like "Cogitating…", "Forming…", "Thinking…", etc.
-  thinkingText: /(\w+ing)…/,
+  // Thinking text patterns - spinner char followed by gerund + ellipsis
+  // Claude shows: "✳ Fermenting…" or "✶ Cogitating…" etc.
+  // IMPORTANT: Only allow actual space chars (not \r\n) to prevent matching
+  // across fragmented terminal refreshes where spinner and text are on different lines
+  thinkingText: /[✳✶✢✱✲✴✵✽✾✿\*·°⊹✻][ ]{0,2}(\w+ing)…/,
 
   // Tool invocation: exact tool names (may appear differently in stream)
   toolStart: /(?:Bash|Read|Edit|Write|Glob|Grep|Task|WebFetch|WebSearch|TodoWrite|NotebookEdit|AskUserQuestion|Skill)\s*\(/,
@@ -286,18 +371,20 @@ const STATE_PATTERNS = {
   // Completion indicators
   completion: /Brewed for|Cooked for|✓|Done in/i,
 
-  // Idle indicators: prompt character or response end marker
-  // "⎿" is Claude's response end marker (appears after output completes)
-  // "❯" or ">" at line end indicates prompt ready for input
-  idlePrompt: /[❯>]\s*$|⎿/
+  // Idle indicators: prompt character at the very end of buffer only
+  // Must be at end of string (no |⎿ since that appears mid-response)
+  idlePrompt: /[❯>]\s*$/
 }
+
+// Track when we last received PTY data for freshness checks
+let lastDataReceivedAt = 0
 
 // Detect state transitions from buffered output
 function detectStateTransition(buffer, sm) {
   const text = buffer.buffer
+  const now = Date.now()
 
   // Debug: log buffer content periodically (every 2 seconds max)
-  const now = Date.now()
   if (!detectStateTransition.lastDebug || now - detectStateTransition.lastDebug > 2000) {
     detectStateTransition.lastDebug = now
     // Log more of the buffer to see actual content
@@ -305,11 +392,24 @@ function detectStateTransition(buffer, sm) {
     debug(`Buffer (${text.length} chars): "${sample.slice(0, 200)}"`)
   }
 
-  // Check recent portion of buffer for patterns
+  // Check recent portion of buffer for activity patterns
   const recent = text.slice(-500)
-  // Check very end of buffer (last 30 chars) for active spinner animation
-  // Spinners appear at the end when Claude is actively processing
+  // Check very end of buffer for idle prompt (must be at the actual end)
   const bufferEnd = text.slice(-30)
+
+  // Wait for initial load to complete before detecting active states
+  // The initial terminal UI render contains spinner-like chars but isn't actual processing
+  if (!initialLoadComplete) {
+    // Only check for idle prompt during initial load
+    if (STATE_PATTERNS.idlePrompt.test(bufferEnd)) {
+      debug(`Initial load complete - first idle prompt detected`)
+      initialLoadComplete = true
+      buffer.clear()
+      sm.transition('idle')
+      sm.cancelIdleTimeout()
+    }
+    return
+  }
 
   // Check for permission prompt (highest priority - needs user input)
   if (STATE_PATTERNS.permissionPrompt.test(recent)) {
@@ -319,16 +419,16 @@ function detectStateTransition(buffer, sm) {
     return
   }
 
-  // Check for spinner characters only at the very end of buffer
-  // Spinners appear at the end during active animation
-  const hasSpinner = STATE_PATTERNS.spinnerActive.test(bufferEnd)
-
-  // Check for thinking text like "Forming…"
+  // Check for thinking text like "✳ Fermenting…" - this is the primary indicator
   const thinkingMatch = recent.match(STATE_PATTERNS.thinkingText)
   if (thinkingMatch) {
-    debug(`Pattern matched: thinkingText -> ${thinkingMatch[0]}`)
-    sm.transition('thinking', thinkingMatch[0])
-    sm.scheduleIdleTimeout()
+    const thinkingText = thinkingMatch[1] + '…'
+    // Skip if this is stale repeated content after going idle
+    if (!sm.shouldIgnoreThinkingText(thinkingText)) {
+      debug(`Pattern matched: thinkingText -> ${thinkingMatch[0]}`)
+      sm.transition('thinking', thinkingText)
+      sm.scheduleIdleTimeout(buffer)
+    }
     return
   }
 
@@ -337,39 +437,38 @@ function detectStateTransition(buffer, sm) {
   if (toolMatch) {
     debug(`Pattern matched: toolStart -> ${toolMatch[0]}`)
     sm.transition('working', toolMatch[0])
-    sm.scheduleIdleTimeout()
-    return
-  }
-
-  // If spinner is active but no specific text, still mark as thinking
-  if (hasSpinner) {
-    if (sm.state === 'idle') {
-      debug(`Pattern matched: spinnerActive`)
-      sm.transition('thinking', 'Processing...')
-      sm.scheduleIdleTimeout()
-      return
-    }
-    // Reset idle timeout while spinner is active
-    sm.scheduleIdleTimeout()
+    sm.scheduleIdleTimeout(buffer)
     return
   }
 
   // Check for completion
   if (STATE_PATTERNS.completion.test(recent)) {
     debug(`Pattern matched: completion`)
-    sm.scheduleIdleTimeout()
+    sm.scheduleIdleTimeout(buffer)
     return
   }
 
-  // Check for idle prompt (no spinner, prompt visible)
-  if (STATE_PATTERNS.idlePrompt.test(recent) && !hasSpinner) {
-    debug(`Pattern matched: idlePrompt`)
-    sm.transition('idle')
-    sm.cancelIdleTimeout()
-    // Clear buffer on idle to prevent old content from triggering false positives
-    buffer.clear()
+  // Check for idle prompt - ONLY at the very end of buffer
+  // Also require minimum time in active state to prevent flapping
+  const minActiveTime = 500  // ms
+  const timeInState = now - sm.stateEnteredAt
+  const isActive = sm.state === 'thinking' || sm.state === 'working'
+
+  if (STATE_PATTERNS.idlePrompt.test(bufferEnd)) {
+    if (!isActive || timeInState >= minActiveTime) {
+      debug(`Pattern matched: idlePrompt (end of buffer)`)
+      sm.transition('idle')
+      sm.cancelIdleTimeout()
+      // Clear buffer on idle to prevent old content from triggering false positives
+      buffer.clear()
+    }
     return
   }
+}
+
+// Mark data as received (called from PTY onData handler)
+function markDataReceived() {
+  lastDataReceivedAt = Date.now()
 }
 
 // Input tracking for message injection timing
@@ -536,6 +635,7 @@ const IDLE_TIMEOUT_MS = 2000
 // Initialize status tracking with state machine
 const outputBuffer = new RingBuffer()
 let stateMachine = null // Initialized after socket connection
+let initialLoadComplete = false // Don't detect status until first idle prompt seen
 
 // Handle terminal resize (interactive mode only)
 if (!headless) {
@@ -563,6 +663,19 @@ socket.on('connect', () => {
         socket.emit('agent_status', status)
       }
     })
+    // Emit initializing status on startup - start spinner animation
+    stateMachine.startSpinner('Initializing...')
+
+    // Set a timeout to complete initialization if idle prompt isn't detected
+    // This handles the case where Claude Code is already idle when we connect
+    setTimeout(() => {
+      if (!initialLoadComplete) {
+        debug('Initialization timeout - assuming idle')
+        initialLoadComplete = true
+        outputBuffer.clear()
+        stateMachine.transition('idle')
+      }
+    }, 3000)  // 3 second timeout
   }
 
   // Send initial status and terminal size
