@@ -6,8 +6,8 @@ A multi-agent orchestration system that enables teams of AI agents to collaborat
 ![Platform](https://img.shields.io/badge/platform-macOS-lightgrey.svg)
 ![Node](https://img.shields.io/badge/node-%3E%3D18-green.svg)
 
-<!-- SCREENSHOT: Dashboard overview showing agents panel and terminal -->
-![Dashboard Screenshot](docs/images/dashboard-screenshot.png)
+<!-- SCREENSHOT: Agent terminals showing collaboration -->
+![Agents Collaborating](docs/images/agents-collaborating.gif)
 
 ## Features
 
@@ -17,9 +17,6 @@ A multi-agent orchestration system that enables teams of AI agents to collaborat
 - **Persistent Message History** - All inter-agent communication stored in SQLite for debugging and replay
 - **Extensible Architecture** - Easy to add new agent roles and customize behavior
 - **Claude Code Integration** - Each agent is a full Claude Code session with access to all its capabilities
-
-<!-- SCREENSHOT: Agent terminals showing collaboration -->
-![Agents Collaborating](docs/images/agents-collaborating.gif)
 
 ## How It Works
 
