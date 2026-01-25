@@ -1,0 +1,29 @@
+{
+  "name": "@hoverlover/cc-agent-orchestration",
+  "version": "0.1.0",
+  "description": "Multi-agent orchestration for Claude Code - coordinate AI agents for software development",
+  "type": "module",
+  "bin": {
+    "cc-agent-orchestration": "./index.js"
+  },
+  "files": [
+    "index.js"
+  ],
+  "keywords": [
+    "claude",
+    "claude-code",
+    "ai-agents",
+    "multi-agent",
+    "orchestration",
+    "anthropic"
+  ],
+  "author": "",
+  "license": "GPL-3.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/hoverlover/cc-agent-orchestration.git"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
