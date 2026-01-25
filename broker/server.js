@@ -9,9 +9,11 @@ import { randomUUID } from 'crypto'
 import { homedir } from 'os'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
-const DATA_DIR = join(__dirname, '..', 'data')
-const TOOLS_DIR = join(__dirname, '..', 'tools')
-const AGENTS_DIR = join(__dirname, '..', 'agents')
+const ORCHESTRATOR_DIR = join(__dirname, '..')
+const DATA_DIR = join(ORCHESTRATOR_DIR, 'data')
+const TOOLS_DIR = join(ORCHESTRATOR_DIR, 'tools')
+const AGENTS_DIR = join(ORCHESTRATOR_DIR, 'agents')
+const PLUGINS_DIR = join(ORCHESTRATOR_DIR, 'plugins')
 
 // Ensure data directory exists
 mkdirSync(DATA_DIR, { recursive: true })
@@ -183,6 +185,8 @@ function spawnAgent(session, role) {
       BROKER_URL: `http://localhost:${PORT}`,
       SESSION_ID: session.id,
       PROJECT_DIR: session.projectDir,
+      ORCHESTRATOR_DIR: ORCHESTRATOR_DIR,
+      PLUGINS_DIR: PLUGINS_DIR,
       AGENT_SYSTEM_PROMPT: agentSystemPrompt && existsSync(agentSystemPrompt) ? agentSystemPrompt : '',
       AGENT_SETTINGS: agentSettings && existsSync(agentSettings) ? agentSettings : '',
       HEADLESS: 'true'

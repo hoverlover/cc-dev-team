@@ -46,6 +46,7 @@ let headless = process.env.HEADLESS === 'true'
 let sessionId = process.env.SESSION_ID || 'default'
 let agentSystemPromptPath = process.env.AGENT_SYSTEM_PROMPT || null  // Path to agent's CLAUDE.md
 let agentSettingsPath = process.env.AGENT_SETTINGS || null  // Path to agent's settings.json
+let pluginsDir = process.env.PLUGINS_DIR || null  // Path to orchestrator plugins directory
 let claudeArgs = []
 
 let i = 0
@@ -599,6 +600,18 @@ if (agentSystemPromptPath && existsSync(agentSystemPromptPath)) {
     debug(`Loaded agent system prompt: ${agentSystemPromptPath} (${systemPrompt.length} chars)`)
   } catch (err) {
     debug(`Failed to read agent system prompt: ${err.message}`)
+  }
+}
+
+// Check for agent-specific plugins
+if (pluginsDir) {
+  // Derive base role (e.g., "engineer" from "engineer-1")
+  const baseRole = agentId.replace(/-\d+$/, '')
+  const agentPluginDir = join(pluginsDir, baseRole)
+
+  if (existsSync(join(agentPluginDir, '.claude-plugin', 'plugin.json'))) {
+    fullClaudeArgs.push('--plugin-dir', agentPluginDir)
+    debug(`Using plugin directory: ${agentPluginDir}`)
   }
 }
 
