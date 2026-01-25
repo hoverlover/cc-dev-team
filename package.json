@@ -1,6 +1,6 @@
 {
   "name": "cc-agent-orchestration",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "description": "Multi-agent orchestration system for software development with Claude Code",
   "type": "module",
   "scripts": {
