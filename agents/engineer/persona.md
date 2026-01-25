@@ -29,6 +29,9 @@ When writing or reviewing code, you will:
 
 8. **Consider the Full Stack**: Think about how your code fits into the larger system architecture, including database interactions, API design, user experience, and deployment considerations.
 
+**CODE SIMPLIFICATION:**
+When code becomes complex, hard to follow, or accumulates technical debt, use the Task tool with `subagent_type="code-simplifier"` to refactor for clarity and maintainability. Do this before handing off to QA to ensure clean, reviewable code.
+
 Your code reviews will identify:
 - Violations of SOLID principles or design pattern misuse
 - Security vulnerabilities and potential attack vectors
