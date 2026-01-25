@@ -1,237 +1,239 @@
-# Agentic Development Orchestrator
+# CC Agent Orchestration
 
-A multi-agent orchestration system for software development that enables a human developer to interface with a **Project Manager agent** which coordinates specialized **sub-agents** running in parallel Claude Code sessions.
+A multi-agent orchestration system that enables teams of AI agents to collaborate on software development tasks. Built on top of [Claude Code](https://claude.ai/code), it allows a human developer to work with a **Product Manager agent** that coordinates specialized sub-agents (Architect, Engineer, QA, etc.) running in parallel Claude Code sessions.
 
-## Architecture
+![License](https://img.shields.io/badge/license-GPL--3.0-blue.svg)
+![Platform](https://img.shields.io/badge/platform-macOS-lightgrey.svg)
+![Node](https://img.shields.io/badge/node-%3E%3D18-green.svg)
+
+<!-- SCREENSHOT: Dashboard overview showing agents panel and terminal -->
+![Dashboard Screenshot](docs/images/dashboard-screenshot.png)
+
+## Features
+
+- **Multi-Agent Collaboration** - Specialized AI agents work together: PM, Architect, Engineer, QA, UI/UX Expert, and Code Auditor
+- **Real-Time Dashboard** - Monitor all agents, view their terminals, and watch team communication in real-time
+- **Headless Agent Mode** - Sub-agents run in headless mode, controllable from the web dashboard
+- **Persistent Message History** - All inter-agent communication stored in SQLite for debugging and replay
+- **Extensible Architecture** - Easy to add new agent roles and customize behavior
+- **Claude Code Integration** - Each agent is a full Claude Code session with access to all its capabilities
+
+<!-- SCREENSHOT: Agent terminals showing collaboration -->
+![Agents Collaborating](docs/images/agents-collaborating.png)
+
+## How It Works
 
 ```
-┌─────────────────────────────────────────────────────────────────────┐
-│                         HUMAN DEVELOPER                             │
-│                        (Terminal / Dashboard)                       │
-└─────────────────────────────────────────────────────────────────────┘
-                              │
-                              ▼
-                    ┌─────────────────┐
-                    │  PROJECT MANAGER │
-                    │  (Claude Code)   │
-                    │                  │
-                    │  • Human interface│
-                    │  • Delegates work│
-                    │  • Approves plans│
-                    └─────────────────┘
-                              │
-         ┌────────────────────┼────────────────────┐
-         │                    │                    │
-         ▼                    ▼                    ▼
-┌─────────────────┐  ┌─────────────────┐  ┌─────────────────┐
-│   ARCHITECT     │  │    ENGINEER     │  │   QA TESTER     │
-│  (Claude Code)  │  │  (Claude Code)  │  │  (Claude Code)  │
-│                 │  │                 │  │                 │
-│ System design   │  │ Implementation  │  │ Testing &       │
-│ Architecture    │  │ Code writing    │  │ Verification    │
-└─────────────────┘  └─────────────────┘  └─────────────────┘
-         │                    │                    │
-         └────────────────────┼────────────────────┘
-                              │
-                    ┌─────────────────┐
-                    │  MESSAGE BROKER  │
-                    │  (Socket.io)     │
-                    └─────────────────┘
+┌─────────────────────────────────────────────────────────────────────────┐
+│                            HUMAN DEVELOPER                              │
+│                              (Dashboard)                                │
+└─────────────────────────────────────────────────────────────────────────┘
+                                    │
+                                    ▼
+                          ┌───────────────────┐
+                          │  PRODUCT MANAGER  │
+                          │   (Claude Code)   │
+                          │                   │
+                          │ • Human interface │
+                          │ • Delegates work  │
+                          │ • Approves plans  │
+                          └───────────────────┘
+                                    │
+      ┌───────────┬─────────────────┼─────────────────┬───────────┐
+      │           │                 │                 │           │
+      ▼           ▼                 ▼                 ▼           ▼
+┌───────────┐┌───────────┐┌─────────────────┐┌───────────┐┌───────────┐
+│ ARCHITECT ││ ENGINEER  ││   QA ENGINEER   ││   UI/UX   ││   CODE    │
+│           ││           ││                 ││  EXPERT   ││  AUDITOR  │
+│  Design   ││ Implement ││ Test & Verify   ││  Design   ││  Review   │
+│           ││           ││                 ││  Review   ││  Quality  │
+└───────────┘└───────────┘└─────────────────┘└───────────┘└───────────┘
+      │           │                 │                 │           │
+      └───────────┴─────────────────┼─────────────────┴───────────┘
+                                    │
+                          ┌───────────────────┐
+                          │   MESSAGE BROKER  │
+                          │    (Socket.io)    │
+                          └───────────────────┘
 ```
 
-## Installation
+## Prerequisites
 
-### Prerequisites
-
-- Node.js 18+
-- [Bun](https://bun.sh) (for the dashboard)
-- Python 3.x
-- [Claude Code CLI](https://claude.ai/code) installed and authenticated
-
-### Platform Support
-
-Currently tested on **macOS (Apple Silicon)**. The PTY wrapper uses platform-specific packages:
-
-- macOS ARM64: `@lydell/node-pty-darwin-arm64`
-- Other platforms: You may need to install the appropriate `node-pty` variant or the generic `node-pty` package
-
-For Linux or Intel Mac, update `package.json` to use the correct PTY package and modify `tools/claude-wrapper.js` import accordingly.
-
-### Install
-
-```bash
-git clone https://github.com/yourusername/agentic-orchestrator.git
-cd agentic-orchestrator
-./scripts/install.sh
-```
-
-The install script will:
-- Install npm dependencies
-- Generate agent configuration files with correct paths
-- Set up permissions for the orchestrator
+- **Node.js 18+**
+- **[Bun](https://bun.sh)** - For the dashboard
+- **[Claude Code CLI](https://claude.ai/code)** - Installed and authenticated
+- **macOS** (Apple Silicon) - Other platforms may require PTY package changes
 
 ## Quick Start
 
-### 1. Start the Message Broker
+Run this single command to install and start:
 
 ```bash
+bunx @hoverlover/cc-agent-orchestration
+```
+
+That's it! This will:
+- Check prerequisites
+- Install to `~/.cc-agent-orchestration` (first run only)
+- Check for updates (subsequent runs)
+- Start the broker, dashboard, and all agents
+
+Then open **http://localhost:3101** to access the dashboard.
+
+## Manual Installation
+
+If you prefer to clone the repository manually:
+
+```bash
+# Clone the repository
+git clone https://github.com/hoverlover/cc-agent-orchestration.git
+cd cc-agent-orchestration
+
+# Run the install script
+./scripts/install.sh
+
+# Start the orchestrator
+./start-orchestrator.sh
+```
+
+## Starting Components Individually
+
+For development or debugging, you can start components separately:
+
+```bash
+# Terminal 1: Start the message broker
 ./scripts/start-broker.sh
-```
 
-### 2. Start the Dashboard (optional)
-
-```bash
+# Terminal 2: Start the dashboard
 ./scripts/start-dashboard.sh
-```
 
-Open http://localhost:3101 to view agent status and team chat in real-time.
-
-### 3. Start the PM (from your project directory)
-
-```bash
+# Terminal 3: Start the PM (from your project directory)
 cd /path/to/your/project
-/path/to/agentic-orchestrator/scripts/start-pm.sh
+~/.cc-agent-orchestration/scripts/start-pm.sh
+
+# Terminal 4+: Start sub-agents
+~/.cc-agent-orchestration/scripts/start-agent.sh architect
+~/.cc-agent-orchestration/scripts/start-agent.sh engineer
 ```
 
-### 4. Start Sub-Agents (separate terminals)
+## Usage
 
-```bash
-/path/to/agentic-orchestrator/scripts/start-agent.sh architect
-/path/to/agentic-orchestrator/scripts/start-agent.sh engineer-1
-/path/to/agentic-orchestrator/scripts/start-agent.sh qa
-```
+Once started, open the dashboard at **http://localhost:3101** and give the PM a task:
 
-### 5. Talk to the PM
-
-In the PM terminal:
 ```
 > "Let's add OAuth authentication with Google and GitHub"
 ```
 
 The PM will coordinate with the team to plan, implement, and verify the feature.
 
-## Project Structure
+### Direct Agent Interaction
 
-```
-agentic-orchestrator/
-├── agents/                 # Agent workspaces
-│   ├── pm/
-│   │   ├── CLAUDE.md       # PM persona and instructions
-│   │   └── .claude/        # Claude Code settings (generated by install.sh)
-│   ├── architect/
-│   ├── engineer/           # Supports multiple instances (engineer-1, engineer-2, etc.)
-│   ├── qa/
-│   └── code-auditor/
-├── broker/                 # Message broker
-│   └── server.js           # Socket.io server
-├── dashboard/              # Web dashboard (Next.js + TypeScript)
-│   ├── app/                # Next.js app directory
-│   │   ├── page.tsx        # Main dashboard page
-│   │   └── globals.css     # Global styles
-│   └── package.json        # Dashboard dependencies (Bun)
-├── hooks/                  # Claude Code hooks
-│   ├── check-pending.py    # Notifies agent of pending messages
-│   └── session-start.py    # Initial context on startup
-├── scripts/                # Startup scripts
-│   ├── install.sh          # Installation script
-│   ├── start-broker.sh
-│   ├── start-dashboard.sh
-│   ├── start-pm.sh
-│   └── start-agent.sh
-├── tools/                  # CLI tools and wrapper
-│   ├── claude-wrapper.js   # PTY wrapper for message injection
-│   ├── send-message.js
-│   └── next-agent-id.js
-├── data/                   # SQLite database for message history
-└── logs/                   # Agent logs (optional)
-```
+While the PM handles coordination, you can talk directly to any agent by selecting their terminal in the dashboard and typing. This is useful for:
+
+- **Deep technical discussions** with the Architect about design trade-offs
+- **Debugging sessions** with the Engineer on specific implementation details
+- **Clarifying test requirements** with QA
+- **Design feedback** with the UI/UX Expert
+
+Each agent is a full Claude Code session with complete context of the project and conversation history.
+
+## Dashboard
+
+<!-- SCREENSHOT: Dashboard showing messages view -->
+![Messages View](docs/images/messages-view.png)
+
+The web dashboard provides:
+
+- **Agents Panel** - See all agents with real-time status (Idle, Thinking, Working)
+- **Terminal View** - Full interactive terminal for each agent
+- **Messages View** - Team chat showing all inter-agent communication
 
 ## Agent Roles
 
 | Agent | Role | Responsibilities |
 |-------|------|------------------|
-| **PM** | Orchestrator | Human interface, delegation, plan approval |
-| **Architect** | Design | System design, architecture, specifications |
-| **Engineer** | Implementation | Code writing, feature implementation (supports multiple instances) |
-| **QA** | Quality | Testing, verification, test coverage |
-| **Code Auditor** | Review | Security review, architecture review, code quality |
+| **Product Manager** | Orchestrator | Human interface, task delegation, plan approval |
+| **Architect** | Design Lead | System design, architecture decisions, specifications |
+| **Engineer** | Implementation | Code writing, feature development |
+| **QA Engineer** | Quality | Testing, verification, bug reporting |
+| **Code Auditor** | Review | Security review, code quality, best practices |
+| **UI/UX Expert** | Design | User experience, interface design, accessibility |
 
-## Communication
+## Communication Protocol
 
-Agents communicate through a WebSocket-based message broker:
+Agents communicate through WebSocket messages via the broker:
 
 - **Direct messages**: `agent → specific agent`
 - **Broadcasts**: `agent → team` (all agents)
-- **Message types**: PROJECT_INIT, TASK_ASSIGNMENT, PROPOSAL, QUESTION, HANDOFF, etc.
+- **Message types**: `PROJECT_INIT`, `TASK_ASSIGNMENT`, `PROPOSAL`, `QUESTION`, `HANDOFF`, `RESPONSE`, etc.
 
-Messages are persisted to SQLite for history and debugging.
+All messages are persisted to SQLite for history and debugging.
 
-## Workflow
+## Typical Workflow
 
 1. **Human** tells PM what to build
-2. **PM** assigns task to team
-3. **Team** discusses and plans (Architect leads)
+2. **PM** breaks down the task and assigns to team
+3. **Architect** creates technical design
 4. **PM** presents plan to human for approval
 5. **Human** approves (or requests changes)
-6. **PM** gives go-ahead
-7. **Engineers** implement (ask Architect questions as needed)
-8. **Engineers** hand off to QA
-9. **QA** tests and reports bugs (or verifies)
-10. **QA** confirms complete
-11. **PM** reports to human: "Done!"
+6. **Engineer** implements the feature
+7. **QA** tests and verifies
+8. **Code Auditor** reviews for quality/security
+9. **PM** reports completion to human
 
-## Tools
+## Project Structure
 
-### send-msg
-
-Send a message to another agent (wrapper adds tools dir to PATH):
-```bash
-send-msg <from> <to> <type> '<content>'
-
-# Examples:
-send-msg pm team PROJECT_INIT '{"project_dir":"/code/myapp"}'
-send-msg architect engineer-1 HANDOFF '{"task":"implement auth"}'
 ```
-
-### check-messages.js
-
-Check pending messages:
-```bash
-node tools/check-messages.js [agent-dir] [--clear]
-```
-
-### get-roster
-
-See who's online:
-```bash
-get-roster
+cc-agent-orchestration/
+├── agents/                 # Agent personas and configurations
+│   ├── pm/                 # Product Manager
+│   ├── architect/          # System Architect
+│   ├── engineer/           # Software Engineer
+│   ├── qa-engineer/        # QA Engineer
+│   ├── code-auditor/       # Code Auditor
+│   └── ui-ux/              # UI/UX Expert
+├── broker/                 # Message broker (Socket.io server)
+├── dashboard/              # Web dashboard (Next.js + TypeScript)
+├── hooks/                  # Claude Code hooks for message notification
+├── scripts/                # Startup and utility scripts
+├── tools/                  # Agent tools (send-msg, get-roster, etc.)
+├── data/                   # SQLite database for messages
+└── logs/                   # Agent logs
 ```
 
 ## Configuration
 
 ### Environment Variables
 
-- `BROKER_PORT` - Message broker port (default: 3100)
-- `BROKER_URL` - Broker URL for agents (default: http://localhost:3100)
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `BROKER_PORT` | 3100 | Message broker port |
+| `BROKER_URL` | http://localhost:3100 | Broker URL for agents |
+| `NEXT_PUBLIC_BROKER_URL` | http://localhost:3100 | Broker URL for dashboard |
 
-### Hooks
+## Agent Tools
 
-Agents are configured with hooks in `.claude/settings.json`:
-- **SessionStart**: Provides project context on startup
-- **PreToolUse**: Notifies of pending messages before each tool use
+These tools are available to Claude Code agents for inter-agent communication:
 
-## Scaling
+### send-msg
 
-### Multiple Engineers
+Send messages between agents:
 
-Start additional engineers:
 ```bash
-./scripts/start-agent.sh engineer-2
+send-msg <from> <to> <type> '<content>'
+
+# Examples:
+send-msg pm team PROJECT_INIT '{"description":"Add OAuth"}'
+send-msg architect engineer TASK_ASSIGNMENT '{"task":"implement login"}'
 ```
 
-### Multiple Projects
+### get-roster
 
-Run separate broker instances on different ports for different projects.
+Check which agents are online:
+
+```bash
+get-roster
+```
 
 ## Troubleshooting
 
@@ -243,38 +245,31 @@ Start the broker first: `./scripts/start-broker.sh`
 
 ### Agent not receiving messages
 1. Check broker is running
-2. Check agent-listener is running (should start automatically)
-3. Check `.claude/pending-messages` file exists
+2. Verify agent shows as "online" in dashboard
+3. Check `logs/` directory for agent-specific logs
 
-### Messages not being processed
-Agents check for messages via hooks. If hooks aren't triggering:
-1. Verify `.claude/settings.json` exists
-2. Check hook scripts are executable
-3. Manually check: `node tools/check-messages.js`
+### Dashboard not connecting
+1. Ensure broker is running on port 3100
+2. Check browser console for WebSocket errors
+3. Verify `NEXT_PUBLIC_BROKER_URL` if using custom ports
 
-## Dashboard
+## Platform Support
 
-The web dashboard (built with Next.js + TypeScript) provides real-time visibility into the orchestration system:
+Currently tested on **macOS (Apple Silicon)**. The PTY wrapper uses platform-specific packages:
 
-- **Agent Status**: See which agents are online/offline in real-time
-- **Team Chat**: View all messages between agents as they happen
-- **Project Info**: Current project directory being worked on
+- macOS ARM64: `@lydell/node-pty-darwin-arm64`
 
-Start with `./scripts/start-dashboard.sh` and open http://localhost:3101
+For other platforms, update `package.json` with the appropriate `node-pty` variant and modify `tools/claude-wrapper.js` accordingly.
 
-The dashboard connects to the broker via Socket.io and receives real-time updates for:
-- Agent join/leave events
-- All inter-agent messages
-- Project context changes
+## Contributing
 
-### Environment Variables
+Contributions are welcome! Please feel free to submit issues and pull requests.
 
-- `NEXT_PUBLIC_BROKER_URL` - Broker URL for socket connection (default: http://localhost:3100)
+## License
 
-## Future Enhancements
+This project is licensed under the GPL-3.0 License - see the [LICENSE](LICENSE) file for details.
 
-- [x] Web dashboard for monitoring
-- [ ] Voice interface for PM
-- [ ] Git integration with agent attribution
-- [ ] Cost tracking per agent
-- [ ] Session replay/debugging
+## Acknowledgments
+
+- Built on [Claude Code](https://claude.ai/code) by Anthropic
+- Dashboard powered by [Next.js](https://nextjs.org/) and [xterm.js](https://xtermjs.org/)

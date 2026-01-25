@@ -1,5 +1,5 @@
 {
-  "name": "agentic-orchestrator",
+  "name": "cc-agent-orchestration",
   "version": "0.1.0",
   "description": "Multi-agent orchestration system for software development with Claude Code",
   "type": "module",

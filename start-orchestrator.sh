@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-# Start the Agentic Orchestrator
+# Start CC Agent Orchestration
 #
 # Starts the message broker and dashboard.
 # Agents are spawned automatically when you open a project in the dashboard.
@@ -76,7 +76,7 @@ cleanup() {
 trap cleanup SIGINT SIGTERM EXIT
 
 echo -e "${CYAN}╔════════════════════════════════════════════════════════════╗${NC}"
-echo -e "${CYAN}║           AGENTIC ORCHESTRATOR - STARTUP                   ║${NC}"
+echo -e "${CYAN}║         CC AGENT ORCHESTRATION - STARTUP                   ║${NC}"
 echo -e "${CYAN}╚════════════════════════════════════════════════════════════╝${NC}"
 echo ""
 
