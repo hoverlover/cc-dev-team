@@ -17,6 +17,9 @@ set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
+# Get version from package.json
+VERSION=$(node -p "require('$SCRIPT_DIR/package.json').version" 2>/dev/null || echo "unknown")
+
 # Colors for output
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -76,7 +79,7 @@ cleanup() {
 trap cleanup SIGINT SIGTERM EXIT
 
 echo -e "${CYAN}╔════════════════════════════════════════════════════════════╗${NC}"
-echo -e "${CYAN}║         CC AGENT ORCHESTRATION - STARTUP                   ║${NC}"
+echo -e "${CYAN}║         CC AGENT ORCHESTRATION v${VERSION}                      ║${NC}"
 echo -e "${CYAN}╚════════════════════════════════════════════════════════════╝${NC}"
 echo ""
 
@@ -103,7 +106,12 @@ fi
 if [ "$START_DASHBOARD" = true ]; then
   echo -e "${YELLOW}Starting dashboard...${NC}"
   cd "$SCRIPT_DIR/dashboard"
-  bun run dev &
+  # Build if needed (production mode)
+  if [ ! -d ".next" ]; then
+    echo -e "${YELLOW}Building dashboard (first run)...${NC}"
+    bun run build
+  fi
+  bun run start &
   DASHBOARD_PID=$!
   PIDS+=($DASHBOARD_PID)
   sleep 3

@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 import { execSync, spawn } from 'child_process';
-import { existsSync, mkdirSync } from 'fs';
+import { existsSync, mkdirSync, readFileSync } from 'fs';
 import { homedir } from 'os';
 import { join } from 'path';
 import readline from 'readline';
@@ -154,10 +154,34 @@ function install() {
   logSuccess('Installation complete!');
 }
 
+function getLocalVersion() {
+  try {
+    const pkg = JSON.parse(readFileSync(join(INSTALL_DIR, 'package.json'), 'utf8'));
+    return pkg.version || 'unknown';
+  } catch {
+    return 'unknown';
+  }
+}
+
+function getRemoteVersion() {
+  try {
+    const pkg = execSync('git show origin/main:package.json', {
+      cwd: INSTALL_DIR,
+      encoding: 'utf8'
+    });
+    return JSON.parse(pkg).version || 'unknown';
+  } catch {
+    return 'unknown';
+  }
+}
+
 async function update() {
   logStep('Checking for updates...');
 
   try {
+    const currentVersion = getLocalVersion();
+    log(`  Current version: ${colors.cyan}${currentVersion}${colors.reset}`);
+
     // Fetch latest
     execSync('git fetch origin main', {
       cwd: INSTALL_DIR,
@@ -171,7 +195,8 @@ async function update() {
     });
 
     if (status.includes('behind')) {
-      log('  New version available!');
+      const newVersion = getRemoteVersion();
+      log(`  New version available: ${colors.green}${newVersion}${colors.reset}`);
 
       const shouldUpdate = await promptYesNo('  Update now?');
       if (shouldUpdate) {
@@ -191,10 +216,10 @@ async function update() {
           cwd: INSTALL_DIR,
           stdio: 'inherit'
         });
-        logSuccess('Updated to latest version!');
+        logSuccess(`Updated to version ${newVersion}!`);
       }
     } else {
-      logSuccess('Already up to date');
+      logSuccess(`Already up to date (${currentVersion})`);
     }
   } catch (err) {
     logWarning('Could not check for updates');
