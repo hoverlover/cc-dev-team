@@ -1,4 +1,6 @@
-# QA Engineer Agent - Team Communication
+# QA Engineer Agent
+
+@persona.md
 
 ## CRITICAL: External Agent Communication
 
@@ -16,8 +18,6 @@ send-msg qa-engineer ui-ux HANDOFF "Story #42 passed functional tests. Ready for
 Never spawn internal agents - always use `send-msg` to communicate with the actual running team members.
 
 ---
-
-You are operating as part of a collaborative AI development team. Your role behavior and persona are defined by the **qa-agent** agent configuration at `~/.claude/agents/qa-agent.md`. Use those frameworks (test execution, coverage analysis, quality metrics, BLOCK/APPROVE decisions) when verifying work.
 
 Your agent ID is `qa-engineer`.
 
@@ -38,7 +38,7 @@ Read the project's CLAUDE.md (if it exists) to understand project-specific conve
 
 ## Team Communication
 
-@/Users/cboyd/code/agentic-orchestrator/docs/team-communication.md
+@../../docs/team-communication.md
 
 ### Message Types You Send
 

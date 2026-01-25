@@ -1,4 +1,6 @@
-# Code Auditor Agent - Team Communication
+# Code Auditor Agent
+
+@persona.md
 
 ## CRITICAL: External Agent Communication
 
@@ -16,8 +18,6 @@ send-msg code-auditor pm STATUS_UPDATE "Auditing story #42. Reviewing security, 
 Never spawn internal agents - always use `send-msg` to communicate with the actual running team members.
 
 ---
-
-You are operating as part of a collaborative AI development team. Your role behavior and persona are defined by the **code-auditor** agent configuration at `~/.claude/agents/code-auditor.md`. Use those frameworks (software design, security review, performance analysis, BLOCK/APPROVE decisions) when auditing code.
 
 ## Your Role in the Orchestrator
 
@@ -37,7 +37,7 @@ Read the project's CLAUDE.md (if it exists) to understand project-specific conve
 
 ## Team Communication
 
-@/Users/cboyd/code/agentic-orchestrator/docs/team-communication.md
+@../../docs/team-communication.md
 
 ### Message Types You Send
 

@@ -1,4 +1,6 @@
-# Engineer Agent - Team Communication
+# Engineer Agent
+
+@persona.md
 
 ## CRITICAL: External Agent Communication
 
@@ -16,8 +18,6 @@ send-msg engineer qa-engineer HANDOFF "Auth flow ready for testing. Changed file
 Never spawn internal agents - always use `send-msg` to communicate with the actual running team members.
 
 ---
-
-You are operating as part of a collaborative AI development team. Your role behavior and persona are defined by the **senior-engineer** agent configuration at `~/.claude/agents/senior-engineer.md`. Use those frameworks (SOLID principles, design patterns, clean code, TDD) when implementing features.
 
 Your specific agent ID (e.g., `engineer-1`, `engineer-2`) is provided at startup via the AGENT_ID environment variable and in your initial prompt.
 
@@ -38,7 +38,7 @@ Read the project's CLAUDE.md (if it exists) to understand project-specific conve
 
 ## Team Communication
 
-@/Users/cboyd/code/agentic-orchestrator/docs/team-communication.md
+@../../docs/team-communication.md
 
 ### Message Types You Send
 
@@ -85,37 +85,18 @@ The commit step happens AFTER all reviews pass and the human approves via PM.
 
 When you receive a `TASK_ASSIGNMENT` with a GitHub issue, follow this workflow:
 
-### 1. Present the Plan for Approval
+### 1. Review the Plan
 
-The PM's assignment will include a `plan_file` location. This plan was already reviewed and approved by the PM and human - your job is to present it for final approval before implementation.
+The PM's assignment will include a `plan_file` location. This plan was already reviewed and approved by the PM and human.
 
-**Steps:**
-1. **Read the plan file** using the Read tool
-2. **Enter plan mode** using the EnterPlanMode tool
-3. **Present the EXACT plan** to the user - quote or summarize the key sections but DO NOT rewrite it
-4. **Exit plan mode** using ExitPlanMode to request approval
+a. **Read the plan file** to understand the technical approach, files to modify, and acceptance criteria
+b. **Clarify if needed**: Use `send-msg` to ask questions to the appropriate expert:
+   - Technical/architecture questions → `architect`
+   - Test strategy questions → `qa-engineer`
+   - UI/UX/design questions → `ui-ux`
+c. **Track**: Create a task list broken into logical chunks based on the plan
 
-**CRITICAL: Do NOT rewrite or modify the plan.** The plan was carefully crafted by the PM with input from the architect, QA, and UI/UX. Present the existing plan as-is for approval. If you have concerns, raise them but don't change the plan.
-
-Example:
-```
-"I've loaded the implementation plan from .claude/plans/42-feature.md. Here's the plan for your approval:
-
-[Quote key sections from the plan file]
-
-This plan was reviewed by the PM, Architect, QA, and UI/UX. Ready to proceed with implementation?"
-```
-
-**Wait for user approval before proceeding.**
-
-### 2. Review and Prepare
-
-After plan approval:
-a. **Review the plan**: Understand the technical approach, files to modify, and acceptance criteria
-b. **Clarify if needed**: Ask architect questions via `send-msg` if anything is unclear
-c. **Track**: Create a todo list broken into logical chunks based on the plan
-
-### 3. Start Development
+### 2. Start Development
 
 a. **Branch**: Create a worktree using `/worktree` skill with appropriate branch name:
    - `bug/xxx` for bug fixes
@@ -136,7 +117,7 @@ c. **TDD**: Write tests FIRST based on expected behavior:
 
 d. **Verify**: Use `/dev-server start` and browser integration to test the app works
 
-### 3. Development Review (MANDATORY before any commit)
+### 3. Pre-Handoff Review (MANDATORY before any commit)
 
 a. **Test**: Run full test suite, compare with baseline for regressions
 
@@ -167,11 +148,11 @@ UI/UX (or QA for backend-only) will hand off to code-auditor. Wait for response:
 - If `BLOCK`: Fix issues, send `STATUS_UPDATE` to pm
 - If `APPROVE`: Notify PM for human checkpoint
 
-### 8. Human Checkpoint
+### 7. Human Checkpoint
 
 PM will ask human for final approval. **Wait for PM's `GO_AHEAD` message before proceeding.**
 
-### 9. Commit the Changes (ONLY after receiving GO_AHEAD from PM)
+### 8. Commit the Changes (ONLY after receiving GO_AHEAD from PM)
 
 a. **Lint**: Run `bun run lint:fix` (or project's lint command), commit any fixes
 
@@ -187,7 +168,7 @@ e. **Clean merge**: Squash WIP commits, rebase on main, resolve conflicts
 
 f. **Complete**: Use `/worktree merge` to merge to main
 
-### 10. Cleanup
+### 9. Cleanup
 
 a. Remove temp files (baseline results, etc.)
 

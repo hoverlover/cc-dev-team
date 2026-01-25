@@ -44,7 +44,7 @@ let agentDir = process.env.PROJECT_DIR || process.cwd()  // Agent runs in projec
 let instanceDir = null
 let headless = process.env.HEADLESS === 'true'
 let sessionId = process.env.SESSION_ID || 'default'
-let agentSystemPromptPath = process.env.AGENT_SYSTEM_PROMPT || null  // Path to agent's CLAUDE.md
+let agentSystemPromptPath = process.env.AGENT_SYSTEM_PROMPT || null  // Path to agent's system-prompt.md
 let agentSettingsPath = process.env.AGENT_SETTINGS || null  // Path to agent's settings.json
 let pluginsDir = process.env.PLUGINS_DIR || null  // Path to orchestrator plugins directory
 let claudeArgs = []
@@ -537,33 +537,6 @@ const rows = headless ? HEADLESS_ROWS : (process.stdout.rows || 40)
 
 debug(`Creating PTY with size ${cols}x${rows}`)
 
-// Resolve @/path/to/file includes in CLAUDE.md content
-function resolveIncludes(content, basePath) {
-  // Match @/absolute/path or @relative/path patterns
-  const includePattern = /@([^\s\n]+)/g
-  return content.replace(includePattern, (match, filePath) => {
-    try {
-      // Handle absolute paths
-      let resolvedPath = filePath
-      if (!filePath.startsWith('/')) {
-        // Relative path - resolve from basePath
-        resolvedPath = join(dirname(basePath), filePath)
-      }
-
-      if (existsSync(resolvedPath)) {
-        const includedContent = readFileSync(resolvedPath, 'utf8')
-        debug(`Resolved include: ${filePath} (${includedContent.length} chars)`)
-        return includedContent
-      } else {
-        debug(`Include file not found: ${resolvedPath}`)
-        return match // Keep original if file not found
-      }
-    } catch (err) {
-      debug(`Failed to resolve include ${filePath}: ${err.message}`)
-      return match
-    }
-  })
-}
 
 // Build Claude arguments - add agent settings and system prompt if specified
 const fullClaudeArgs = [...claudeArgs]
@@ -590,14 +563,42 @@ if (agentSettingsPath && existsSync(agentSettingsPath)) {
   }
 }
 
-// Load agent system prompt (role/persona) from the agent's CLAUDE.md
+// Resolve @/path/to/file includes in system-prompt.md content
+function resolveIncludes(content, basePath) {
+  // Match @path patterns (absolute or relative)
+  const includePattern = /^@([^\s\n]+)$/gm
+  return content.replace(includePattern, (match, filePath) => {
+    try {
+      // Resolve path relative to the file containing the include
+      let resolvedPath = filePath
+      if (!filePath.startsWith('/')) {
+        resolvedPath = join(dirname(basePath), filePath)
+      }
+
+      if (existsSync(resolvedPath)) {
+        const includedContent = readFileSync(resolvedPath, 'utf8')
+        debug(`Resolved include: ${filePath} -> ${resolvedPath} (${includedContent.length} chars)`)
+        // Recursively resolve includes in the included content
+        return resolveIncludes(includedContent, resolvedPath)
+      } else {
+        debug(`Include file not found: ${resolvedPath}`)
+        return match // Keep original if file not found
+      }
+    } catch (err) {
+      debug(`Failed to resolve include ${filePath}: ${err.message}`)
+      return match
+    }
+  })
+}
+
+// Load agent system prompt (role/persona) from the agent's system-prompt.md
 if (agentSystemPromptPath && existsSync(agentSystemPromptPath)) {
   try {
     let systemPrompt = readFileSync(agentSystemPromptPath, 'utf8')
     // Resolve any @includes in the system prompt
     systemPrompt = resolveIncludes(systemPrompt, agentSystemPromptPath)
     fullClaudeArgs.push('--append-system-prompt', systemPrompt)
-    debug(`Loaded agent system prompt: ${agentSystemPromptPath} (${systemPrompt.length} chars)`)
+    debug(`Loaded agent system prompt: ${agentSystemPromptPath} (${systemPrompt.length} chars after includes)`)
   } catch (err) {
     debug(`Failed to read agent system prompt: ${err.message}`)
   }

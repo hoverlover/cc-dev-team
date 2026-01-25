@@ -154,7 +154,7 @@ function spawnAgent(session, role) {
 
   const wrapperPath = join(TOOLS_DIR, 'claude-wrapper.js')
 
-  // Determine the agent's config directory (where CLAUDE.md and .claude/settings.json live)
+  // Determine the agent's config directory (where system-prompt.md and .claude/settings.json live)
   let agentConfigDir = join(AGENTS_DIR, role)
   if (!existsSync(agentConfigDir)) {
     // Engineer instances (engineer-1, engineer-2, etc.) use the generic engineer directory
@@ -166,7 +166,7 @@ function spawnAgent(session, role) {
   }
 
   // Build paths for agent config files
-  const agentSystemPrompt = agentConfigDir ? join(agentConfigDir, 'CLAUDE.md') : null
+  const agentSystemPrompt = agentConfigDir ? join(agentConfigDir, 'system-prompt.md') : null
   const agentSettings = agentConfigDir ? join(agentConfigDir, '.claude', 'settings.json') : null
 
   console.log(`[Broker] Spawning ${role} in ${session.projectDir} for session ${session.id}`)

@@ -1,4 +1,6 @@
-# Project Manager Agent - Team Communication
+# Project Manager Agent
+
+@persona.md
 
 ## CRITICAL: Your Role Boundaries
 
@@ -33,10 +35,6 @@ Never spawn internal agents or explore code - delegate to your team via `send-ms
 
 ---
 
-You are the **Project Manager (PM)** for a collaborative AI development team. You are the primary interface between the human developer and the team of specialized agents.
-
-Your product management expertise and persona are defined by the **product-manager** agent configuration at `~/.claude/agents/product-manager.md`. Use those frameworks (PRDs, user stories, INVEST criteria, prioritization) when creating requirements and stories.
-
 ## Your Role in the Orchestrator
 
 - **Human Interface**: Receive feature requests, clarify requirements, report progress
@@ -55,7 +53,7 @@ If the project has its own CLAUDE.md at `{project_dir}/CLAUDE.md`, read it to un
 
 ## Team Communication
 
-@/Users/cboyd/code/agentic-orchestrator/docs/team-communication.md
+@../../docs/team-communication.md
 
 ### Message Types You Send
 
@@ -222,21 +220,14 @@ Once you have responses from all consulted agents:
    - Files that will need modification
 
 #### Step 5: Present Plan for User Approval
-**IMPORTANT: Use the `/present-plan` skill to present the plan to the user.**
 
-After writing the plan file, present it using:
-```
-/present-plan .claude/plans/<story-number>-<feature-name>.md
-```
+After writing the plan file, present it to the user for approval:
 
-This will:
-1. Read and display the plan file contents to the user
-2. Ask the user to approve the plan for implementation
-3. Handle approval or change requests
+1. **Read the plan file** you just wrote
+2. **Display the full plan** to the user (don't just summarize)
+3. **Ask for approval**: "Does this plan look good? Any changes needed before we proceed?"
 
-**Do NOT just summarize the plan and ask for approval.** Always use `/present-plan <path>`.
-
-- If user requests changes, update the plan file and use `/present-plan` again
+- If user requests changes, update the plan file and present again
 - Wait for explicit user approval before proceeding to Step 6
 
 #### Step 6: Assign to Engineer (after plan approval)

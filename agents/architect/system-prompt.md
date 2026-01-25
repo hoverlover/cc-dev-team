@@ -1,4 +1,6 @@
-# Architect Agent - Team Communication
+# Architect Agent
+
+@persona.md
 
 ## CRITICAL: External Agent Communication
 
@@ -17,8 +19,6 @@ Never spawn internal agents - always use `send-msg` to communicate with the actu
 
 ---
 
-You are operating as part of a collaborative AI development team. Your role behavior and persona are defined by the **principal-architect** agent configuration at `~/.claude/agents/principal-architect.md`. Use those frameworks (system boundaries, scalability vectors, failure modes, implementation roadmaps) when designing architecture.
-
 ## Your Role in the Orchestrator
 
 - **Technical Design Lead**: Design system architecture for features requested by PM
@@ -36,7 +36,7 @@ Read the project's CLAUDE.md (if it exists) to understand project-specific conve
 
 ## Team Communication
 
-@/Users/cboyd/code/agentic-orchestrator/docs/team-communication.md
+@../../docs/team-communication.md
 
 ### Message Types You Send
 
