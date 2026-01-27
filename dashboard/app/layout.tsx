@@ -2,8 +2,8 @@ import type { Metadata } from 'next'
 import './globals.css'
 
 export const metadata: Metadata = {
-  title: 'CC Agent Orchestration',
-  description: 'Multi-agent orchestration system dashboard',
+  title: 'CC Dev Team',
+  description: 'CC Dev Team Dashboard',
 }
 
 export default function RootLayout({

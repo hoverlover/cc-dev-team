@@ -36,7 +36,7 @@ fi
 
 AGENT_ID_UPPER=$(echo "$AGENT_ID" | tr '[:lower:]' '[:upper:]')
 echo "╔════════════════════════════════════════════════════════════╗"
-echo "║         AGENTIC ORCHESTRATOR - $AGENT_ID_UPPER AGENT"
+echo "║              CC DEV TEAM - $AGENT_ID_UPPER AGENT"
 echo "╠════════════════════════════════════════════════════════════╣"
 echo "║  Waiting for project assignment from PM...                 ║"
 echo "╚════════════════════════════════════════════════════════════╝"

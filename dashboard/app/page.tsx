@@ -588,7 +588,7 @@ export default function Dashboard() {
   return (
     <div className={styles.container}>
       <header className={styles.header}>
-        <h1>CC Agent Orchestration</h1>
+        <h1>CC Dev Team</h1>
         <div className={styles.headerControls}>
           <div className={styles.viewToggle}>
             <button

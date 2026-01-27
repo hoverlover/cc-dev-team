@@ -732,7 +732,7 @@ const PORT = process.env.BROKER_PORT || 3100
 server.listen(PORT, () => {
   console.log(`
 ╔════════════════════════════════════════════════════════════╗
-║           AGENTIC ORCHESTRATOR - MESSAGE BROKER            ║
+║                CC DEV TEAM - MESSAGE BROKER                ║
 ╠════════════════════════════════════════════════════════════╣
 ║  Status:  RUNNING                                          ║
 ║  Port:    ${PORT}                                             ║

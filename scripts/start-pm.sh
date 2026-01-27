@@ -7,7 +7,7 @@ PM_DIR="$ORCHESTRATOR_DIR/agents/pm"
 INSTANCE_DIR="$PM_DIR/.claude"
 
 echo "╔════════════════════════════════════════════════════════════╗"
-echo "║              AGENTIC ORCHESTRATOR - PM AGENT               ║"
+echo "║                   CC DEV TEAM - PM AGENT                   ║"
 echo "╠════════════════════════════════════════════════════════════╣"
 echo "║  Project: $PROJECT_DIR"
 echo "╚════════════════════════════════════════════════════════════╝"

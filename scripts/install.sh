@@ -1,5 +1,5 @@
 #!/bin/bash
-# CC Agent Orchestration Installation Script
+# CC Dev Team Installation Script
 # Generates settings.json files with correct paths for this installation
 
 set -e
@@ -7,7 +7,7 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 ORCHESTRATOR_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 
-echo "Installing CC Agent Orchestration..."
+echo "Installing CC Dev Team..."
 echo "Directory: $ORCHESTRATOR_DIR"
 echo ""
 

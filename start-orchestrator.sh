@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-# Start CC Agent Orchestration
+# Start CC Dev Team
 #
 # Starts the message broker and dashboard.
 # Agents are spawned automatically when you open a project in the dashboard.
@@ -85,7 +85,7 @@ cleanup() {
 trap cleanup SIGINT SIGTERM EXIT
 
 echo -e "${CYAN}╔════════════════════════════════════════════════════════════╗${NC}"
-echo -e "${CYAN}║         CC AGENT ORCHESTRATION v${VERSION}                      ║${NC}"
+echo -e "${CYAN}║                     CC DEV TEAM v${VERSION}                     ║${NC}"
 echo -e "${CYAN}╚════════════════════════════════════════════════════════════╝${NC}"
 echo ""
 
@@ -140,7 +140,7 @@ fi
 
 echo ""
 echo -e "${GREEN}╔════════════════════════════════════════════════════════════╗${NC}"
-echo -e "${GREEN}║           ORCHESTRATOR READY (v${VERSION})                      ║${NC}"
+echo -e "${GREEN}║                CC DEV TEAM READY (v${VERSION})                 ║${NC}"
 echo -e "${GREEN}╠════════════════════════════════════════════════════════════╣${NC}"
 echo -e "${GREEN}║  Dashboard: http://localhost:3101                          ║${NC}"
 echo -e "${GREEN}║  Broker:    http://localhost:3100                          ║${NC}"
