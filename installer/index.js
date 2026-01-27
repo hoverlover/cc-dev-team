@@ -200,6 +200,12 @@ async function update() {
 
       const shouldUpdate = await promptYesNo('  Update now?');
       if (shouldUpdate) {
+        // Reset any local changes (e.g. package-lock.json from npm install)
+        // before pulling — this is an installed copy, not a dev workspace
+        execSync('git reset --hard HEAD', {
+          cwd: INSTALL_DIR,
+          stdio: 'pipe'
+        });
         execSync('git pull origin main', {
           cwd: INSTALL_DIR,
           stdio: 'inherit'
