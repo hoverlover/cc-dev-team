@@ -64,4 +64,6 @@ echo ""
 node "$ORCHESTRATOR_DIR/tools/claude-wrapper.js" \
   --agent-id "pm" \
   --agent-dir "$PM_DIR" \
-  --instance-dir "$INSTANCE_DIR"
+  --instance-dir "$INSTANCE_DIR" \
+  --agent-system-prompt "$PM_DIR/system-prompt.md" \
+  --agent-settings "$PM_DIR/.claude/settings.json"

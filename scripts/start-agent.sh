@@ -80,4 +80,6 @@ echo ""
 node "$ORCHESTRATOR_DIR/tools/claude-wrapper.js" \
   --agent-id "$AGENT_ID" \
   --agent-dir "$AGENT_DIR" \
-  --instance-dir "$INSTANCE_DIR"
+  --instance-dir "$INSTANCE_DIR" \
+  --agent-system-prompt "$AGENT_DIR/system-prompt.md" \
+  --agent-settings "$AGENT_DIR/.claude/settings.json"
