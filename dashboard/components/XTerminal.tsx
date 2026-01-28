@@ -169,6 +169,14 @@ const XTerminal = forwardRef<XTerminalHandle, XTerminalProps>(({ className, onDa
     // Focus terminal on mount
     terminal.focus()
 
+    // Restore cursor visibility when terminal gains focus or is clicked
+    // Claude Code may hide cursor during processing and not restore it
+    const showCursor = () => {
+      terminal.write('\x1b[?25h') // Show cursor escape sequence
+    }
+    terminal.textarea?.addEventListener('focus', showCursor)
+    containerRef.current.addEventListener('click', showCursor)
+
     // Notify parent that terminal is ready
     if (onReady) {
       onReady()
@@ -176,9 +184,12 @@ const XTerminal = forwardRef<XTerminalHandle, XTerminalProps>(({ className, onDa
 
     // Capture container for cleanup
     const container = containerRef.current
+    const textarea = terminal.textarea
 
     return () => {
       container?.removeEventListener('wheel', handleWheel)
+      container?.removeEventListener('click', showCursor)
+      textarea?.removeEventListener('focus', showCursor)
       terminal.dispose()
     }
   }, [onData])
