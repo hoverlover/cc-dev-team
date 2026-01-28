@@ -1,0 +1,26 @@
+name: Validate Agent Configuration
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'agents/**'
+      - 'scripts/start-*.sh'
+      - 'scripts/validate-agents.sh'
+      - 'tools/claude-wrapper.js'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'agents/**'
+      - 'scripts/start-*.sh'
+      - 'scripts/validate-agents.sh'
+      - 'tools/claude-wrapper.js'
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate agent configuration
+        run: ./scripts/validate-agents.sh

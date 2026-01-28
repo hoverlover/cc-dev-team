@@ -19,6 +19,10 @@ fi
 echo "Logged in as: $(npm whoami)"
 echo ""
 
+# Run agent validation checks
+"$SCRIPT_DIR/validate-agents.sh"
+echo ""
+
 cd "$INSTALLER_DIR"
 
 # Get current version

@@ -93,6 +93,11 @@ debug(`Working directory: ${agentDir}`)
 if (agentSystemPromptPath) debug(`Agent system prompt: ${agentSystemPromptPath}`)
 if (agentSettingsPath) debug(`Agent settings: ${agentSettingsPath}`)
 
+// Log warning if system prompt not provided (validated by CI, but log for debugging)
+if (!agentSystemPromptPath) {
+  debug('WARNING: No --agent-system-prompt provided - agent may not follow role instructions')
+}
+
 if (!instanceDir) {
   instanceDir = join(agentDir, '.claude', 'instances', agentId)
 }
