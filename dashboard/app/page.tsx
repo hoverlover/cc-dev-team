@@ -6,6 +6,7 @@ import dynamic from 'next/dynamic'
 import '@xterm/xterm/css/xterm.css'
 import styles from './page.module.css'
 import ProjectPicker from '../components/ProjectPicker'
+import packageJson from '../../package.json'
 
 // Dynamic import of XTerminal to avoid SSR issues
 const XTerminal = dynamic(() => import('../components/XTerminal'), {
@@ -606,7 +607,10 @@ export default function Dashboard() {
   return (
     <div className={styles.container}>
       <header className={styles.header}>
-        <h1>CC Dev Team</h1>
+        <div className={styles.headerTitle}>
+          <h1>CC Dev Team</h1>
+          <span className={styles.versionBadge}>v{packageJson.version}</span>
+        </div>
         <div className={styles.headerControls}>
           <div className={styles.viewToggle}>
             <button

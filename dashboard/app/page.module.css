@@ -15,10 +15,26 @@
   flex-shrink: 0;
 }
 
+.headerTitle {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
 .header h1 {
   font-size: 1.25rem;
   font-weight: 600;
   color: var(--accent);
+}
+
+.versionBadge {
+  font-size: 0.65rem;
+  padding: 0.15rem 0.4rem;
+  background: var(--bg-tertiary);
+  color: var(--text-secondary);
+  border-radius: 0.25rem;
+  font-weight: 500;
+  font-family: monospace;
 }
 
 .headerControls {
