@@ -1,7 +1,7 @@
 import { Server } from 'socket.io'
 import { createServer } from 'http'
 import Database from 'better-sqlite3'
-import { mkdirSync, readdirSync, statSync, existsSync } from 'fs'
+import { mkdirSync, readdirSync, statSync, existsSync, writeFileSync } from 'fs'
 import { dirname, join, basename, resolve } from 'path'
 import { fileURLToPath } from 'url'
 import { spawn } from 'child_process'
@@ -14,9 +14,11 @@ const DATA_DIR = join(ORCHESTRATOR_DIR, 'data')
 const TOOLS_DIR = join(ORCHESTRATOR_DIR, 'tools')
 const AGENTS_DIR = join(ORCHESTRATOR_DIR, 'agents')
 const PLUGINS_DIR = join(ORCHESTRATOR_DIR, 'plugins')
+const UPLOADS_DIR = join(homedir(), '.cc-dev-team', 'uploads')
 
 // Ensure data directory exists
 mkdirSync(DATA_DIR, { recursive: true })
+mkdirSync(UPLOADS_DIR, { recursive: true })
 
 // Initialize SQLite database for message persistence
 const db = new Database(join(DATA_DIR, 'messages.db'))
@@ -415,6 +417,33 @@ io.on('connection', (socket) => {
       const agentInfo = session.agents.get(agent)
       if (agentInfo && agentInfo.socketId) {
         io.to(agentInfo.socketId).emit('agent_input', { data })
+      }
+    })
+
+    // ---- File Upload ----
+
+    socket.on('upload_file', ({ sessionId, filename, data, mimeType }, callback) => {
+      try {
+        // Create session-specific upload directory
+        const sessionUploadDir = join(UPLOADS_DIR, sessionId)
+        mkdirSync(sessionUploadDir, { recursive: true })
+
+        // Generate unique filename to avoid collisions
+        const timestamp = Date.now()
+        const safeFilename = filename.replace(/[^a-zA-Z0-9._-]/g, '_')
+        const uniqueFilename = `${timestamp}-${safeFilename}`
+        const filePath = join(sessionUploadDir, uniqueFilename)
+
+        // Decode base64 data and write to file
+        const buffer = Buffer.from(data, 'base64')
+        writeFileSync(filePath, buffer)
+
+        console.log(`[Broker] File uploaded: ${filePath} (${buffer.length} bytes)`)
+
+        callback({ success: true, path: filePath })
+      } catch (err) {
+        console.error(`[Broker] File upload error:`, err)
+        callback({ success: false, error: err.message })
       }
     })
 

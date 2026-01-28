@@ -196,38 +196,56 @@ export default function Dashboard() {
     if (files.length === 0) return
 
     for (const file of files) {
-      const reader = new FileReader()
+      const isText = file.type.startsWith('text/') ||
+        /\.(txt|md|js|ts|tsx|jsx|json|css|html|xml|yaml|yml|py|rb|go|rs|java|c|cpp|h|sh|bash|zsh)$/i.test(file.name)
 
-      reader.onload = () => {
-        const content = reader.result as string
-        const isText = file.type.startsWith('text/') ||
-          /\.(txt|md|js|ts|tsx|jsx|json|css|html|xml|yaml|yml|py|rb|go|rs|java|c|cpp|h|sh|bash|zsh)$/i.test(file.name)
-
-        if (isText) {
+      if (isText) {
+        // For text files, read and inline the content
+        const reader = new FileReader()
+        reader.onload = () => {
+          const content = reader.result as string
           const message = `[File attached: ${file.name}]\n\`\`\`\n${content}\n\`\`\`\n`
           socketRef.current?.emit('agent_input', {
             sessionId: activeSessionIdRef.current,
             agent: selectedAgentRef.current,
             data: message
           })
-        } else {
-          socketRef.current?.emit('agent_input', {
-            sessionId: activeSessionIdRef.current,
-            agent: selectedAgentRef.current,
-            data: `[File reference: ${file.name} (${file.type}, ${file.size} bytes)]\n`
-          })
         }
-      }
-
-      if (file.type.startsWith('text/') ||
-          /\.(txt|md|js|ts|tsx|jsx|json|css|html|xml|yaml|yml|py|rb|go|rs|java|c|cpp|h|sh|bash|zsh)$/i.test(file.name)) {
         reader.readAsText(file)
       } else {
-        socketRef.current.emit('agent_input', {
-          sessionId: activeSessionIdRef.current,
-          agent: selectedAgentRef.current,
-          data: `[File reference: ${file.name} (${file.type}, ${file.size} bytes)]\n`
-        })
+        // For binary files (images, etc.), upload to broker and send the path
+        const reader = new FileReader()
+        reader.onload = () => {
+          const arrayBuffer = reader.result as ArrayBuffer
+          const base64 = btoa(
+            new Uint8Array(arrayBuffer).reduce((data, byte) => data + String.fromCharCode(byte), '')
+          )
+
+          socketRef.current?.emit('upload_file', {
+            sessionId: activeSessionIdRef.current,
+            filename: file.name,
+            data: base64,
+            mimeType: file.type
+          }, (response: { success: boolean; path?: string; error?: string }) => {
+            if (response.success && response.path) {
+              // Send the actual file path to Claude Code
+              socketRef.current?.emit('agent_input', {
+                sessionId: activeSessionIdRef.current,
+                agent: selectedAgentRef.current,
+                data: `[File attached: ${response.path}]\n`
+              })
+            } else {
+              console.error('File upload failed:', response.error)
+              // Fallback to reference if upload fails
+              socketRef.current?.emit('agent_input', {
+                sessionId: activeSessionIdRef.current,
+                agent: selectedAgentRef.current,
+                data: `[File upload failed: ${file.name} (${response.error})]\n`
+              })
+            }
+          })
+        }
+        reader.readAsArrayBuffer(file)
       }
     }
   }, [])
