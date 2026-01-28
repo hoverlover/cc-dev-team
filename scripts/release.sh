@@ -26,7 +26,7 @@ cd "$ROOT_DIR"
 npm version "$NEW_VERSION" --no-git-tag-version --allow-same-version
 
 # Commit and tag from root
-git add installer/package.json package.json
+git add installer/package.json package.json package-lock.json
 git commit -m "Bump installer to v$NEW_VERSION"
 git tag "v$NEW_VERSION"
 git push origin main
