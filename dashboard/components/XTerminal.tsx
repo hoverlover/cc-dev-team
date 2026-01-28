@@ -36,11 +36,24 @@ const XTerminal = forwardRef<XTerminalHandle, XTerminalProps>(({ className, onDa
   useImperativeHandle(actualRef, () => ({
     write: (data: string) => {
       if (terminalRef.current) {
-        // Capture pinned state BEFORE writing (write might trigger onScroll)
+        const terminal = terminalRef.current
+        const buffer = terminal.buffer.active
+        // Capture pinned state and viewport position BEFORE writing
+        // (write might trigger scroll via escape sequences like \x1b[H cursor home)
         const shouldScroll = pinnedToBottomRef.current
-        terminalRef.current.write(data)
+        const previousViewportY = buffer.viewportY
+
+        terminal.write(data)
+
         if (shouldScroll) {
-          terminalRef.current.scrollToBottom()
+          terminal.scrollToBottom()
+        } else {
+          // Restore viewport position if user was scrolled up
+          // This prevents escape sequences in the output from jumping the viewport
+          const currentViewportY = buffer.viewportY
+          if (currentViewportY !== previousViewportY) {
+            terminal.scrollToLine(previousViewportY)
+          }
         }
       }
     },
@@ -171,8 +184,15 @@ const XTerminal = forwardRef<XTerminalHandle, XTerminalProps>(({ className, onDa
 
     // Restore cursor visibility when terminal gains focus or is clicked
     // Claude Code may hide cursor during processing and not restore it
+    // IMPORTANT: Preserve scroll position to prevent viewport jumping
     const showCursor = () => {
+      const buffer = terminal.buffer.active
+      const viewportY = buffer.viewportY
       terminal.write('\x1b[?25h') // Show cursor escape sequence
+      // Restore viewport if it changed (shouldn't, but defensive)
+      if (buffer.viewportY !== viewportY) {
+        terminal.scrollToLine(viewportY)
+      }
     }
     terminal.textarea?.addEventListener('focus', showCursor)
     containerRef.current.addEventListener('click', showCursor)
