@@ -3,6 +3,7 @@ node_modules/
 
 # Next.js
 .next/
+next-env.d.ts
 
 # Runtime data
 data/*.db
