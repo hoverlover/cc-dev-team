@@ -1,6 +1,6 @@
 #!/bin/bash
 # Publish installer to npm
-# Usage: ./scripts/npm-publish.sh [patch|minor|major]
+# Usage: ./scripts/release.sh [patch|minor|major]
 
 set -e
 
@@ -9,6 +9,15 @@ ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 INSTALLER_DIR="$ROOT_DIR/installer"
 
 BUMP_TYPE="${1:-patch}"
+
+# Check npm login status before doing anything
+echo "Checking npm login status..."
+if ! npm whoami &>/dev/null; then
+  echo "Not logged in to npm. Please run 'npm login' first."
+  exit 1
+fi
+echo "Logged in as: $(npm whoami)"
+echo ""
 
 cd "$INSTALLER_DIR"
 

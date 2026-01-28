@@ -218,6 +218,11 @@ async function update() {
           cwd: join(INSTALL_DIR, 'dashboard'),
           stdio: 'inherit'
         });
+        log('  Rebuilding dashboard...');
+        execSync('bun run build', {
+          cwd: join(INSTALL_DIR, 'dashboard'),
+          stdio: 'inherit'
+        });
         execSync('./scripts/install.sh', {
           cwd: INSTALL_DIR,
           stdio: 'inherit'
