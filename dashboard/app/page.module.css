@@ -697,3 +697,55 @@
   font-size: 0.85rem;
   text-align: center;
 }
+
+/* Task Summary Bar */
+.taskSummaryBar {
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--bg-tertiary);
+  padding: 0.5rem 1.5rem;
+  flex-shrink: 0;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+}
+
+.taskContext {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.issueNumber {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.worktreeName {
+  color: var(--accent-secondary);
+  font-family: monospace;
+}
+
+.separator {
+  color: var(--text-secondary);
+  opacity: 0.5;
+}
+
+.noTask {
+  color: var(--text-secondary);
+  font-style: italic;
+}
+
+.agentActivity {
+  color: var(--text-secondary);
+}
+
+.agentActivity strong {
+  color: var(--text-primary);
+}
+
+.idle {
+  font-style: italic;
+  opacity: 0.7;
+}

@@ -329,7 +329,9 @@ io.on('connection', (socket) => {
         session: {
           id: session.id,
           name: session.name,
-          projectDir: session.projectDir
+          projectDir: session.projectDir,
+          issueNum: session.issueNum,
+          worktreeName: session.worktreeName
         },
         roster: Array.from(session.agents.keys()),
         project: session.project
@@ -663,8 +665,19 @@ io.on('connection', (socket) => {
   socket.on('rename_sessions', ({ issueNum, worktreeName }, callback) => {
     console.log(`[Broker] [${session.id}] Renaming all sessions: issue=${issueNum}, worktree=${worktreeName}`)
 
+    // Store on session object
+    session.issueNum = issueNum
+    session.worktreeName = worktreeName
+
     // Broadcast to all agents in this session (including sender)
     io.to(`session:${session.id}:team`).emit('rename_session', { issueNum, worktreeName })
+
+    // Broadcast to dashboard
+    io.to(`session:${session.id}:dashboard`).emit('session_metadata', {
+      sessionId: session.id,
+      issueNum,
+      worktreeName
+    })
 
     if (callback) callback({ success: true, agentCount: session.agents.size })
   })

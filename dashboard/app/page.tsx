@@ -53,6 +53,8 @@ interface SessionState {
   agentStatuses: Record<string, AgentStatus>
   messages: Message[]
   selectedAgent: string | null
+  issueNum?: string
+  worktreeName?: string
 }
 
 const BROKER_URL = process.env.NEXT_PUBLIC_BROKER_URL || 'http://localhost:3100'
@@ -92,6 +94,23 @@ function getStatusLabel(status: AgentStatus): string {
     case 'offline': return 'Offline'
     default: return 'Idle'
   }
+}
+
+function getActiveAgentTask(statuses: Record<string, AgentStatus>): { agent: string; task: string } | null {
+  // Prioritize PM, then first working agent
+  const pmStatus = statuses['pm']
+  if (pmStatus?.task && pmStatus.status !== 'idle') {
+    return { agent: 'PM', task: pmStatus.task }
+  }
+
+  // Find first busy agent
+  for (const [agent, status] of Object.entries(statuses)) {
+    if (status.status === 'working' || status.status === 'thinking') {
+      return { agent: formatAgentName(agent), task: status.task || 'Working...' }
+    }
+  }
+
+  return null
 }
 
 function createEmptySessionState(): SessionState {
@@ -293,6 +312,7 @@ export default function Dashboard() {
       success: boolean
       roster?: string[]
       project?: { project_dir: string }
+      session?: { issueNum?: string; worktreeName?: string }
       error?: string
     }) => {
       if (result.success) {
@@ -310,7 +330,9 @@ export default function Dashboard() {
               ...prev,
               [sessionId]: {
                 ...createEmptySessionState(),
-                agents: new Set(result.roster || [])
+                agents: new Set(result.roster || []),
+                issueNum: result.session?.issueNum,
+                worktreeName: result.session?.worktreeName
               }
             }
           }
@@ -318,7 +340,9 @@ export default function Dashboard() {
             ...prev,
             [sessionId]: {
               ...prev[sessionId],
-              agents: new Set(result.roster || [])
+              agents: new Set(result.roster || []),
+              issueNum: result.session?.issueNum ?? prev[sessionId].issueNum,
+              worktreeName: result.session?.worktreeName ?? prev[sessionId].worktreeName
             }
           }
         })
@@ -544,6 +568,26 @@ export default function Dashboard() {
       })
     })
 
+    // Session metadata update (issue/worktree info)
+    socket.on('session_metadata', ({ sessionId, issueNum, worktreeName }: {
+      sessionId: string
+      issueNum?: string
+      worktreeName?: string
+    }) => {
+      setSessionStates(prev => {
+        const state = prev[sessionId]
+        if (!state) return prev
+        return {
+          ...prev,
+          [sessionId]: {
+            ...state,
+            issueNum,
+            worktreeName
+          }
+        }
+      })
+    })
+
     // Message history for a session
     socket.on('message_history', ({ sessionId, messages }: { sessionId: string; messages: Message[] }) => {
       setSessionStates(prev => {
@@ -658,6 +702,32 @@ export default function Dashboard() {
           + New Project
         </button>
       </div>
+
+      {/* Task Summary Bar */}
+      {activeSessionId && currentSessionState && (
+        <div className={styles.taskSummaryBar}>
+          <div className={styles.taskContext}>
+            {currentSessionState.issueNum ? (
+              <>
+                <span className={styles.issueNumber}>#{currentSessionState.issueNum}</span>
+                <span className={styles.separator}>•</span>
+                <span className={styles.worktreeName}>{currentSessionState.worktreeName}</span>
+              </>
+            ) : (
+              <span className={styles.noTask}>No active issue</span>
+            )}
+          </div>
+          <div className={styles.agentActivity}>
+            {(() => {
+              const activeTask = getActiveAgentTask(currentSessionState.agentStatuses)
+              if (activeTask) {
+                return <span><strong>{activeTask.agent}:</strong> {activeTask.task}</span>
+              }
+              return <span className={styles.idle}>Idle</span>
+            })()}
+          </div>
+        </div>
+      )}
 
       <main className={styles.main}>
         {!activeSessionId ? (
