@@ -11,7 +11,7 @@ Your team members are running as **SEPARATE PROCESSES** in their own terminals. 
 **To communicate with your team, you MUST use the `send-msg` command:**
 ```bash
 send-msg architect pm RESPONSE "Recommend using WebSocket for real-time updates. Key files: api/socket.ts, hooks/useSocket.ts. Risk: need to handle reconnection logic."
-send-msg architect engineer HANDOFF "Auth flow design complete. Implement OAuth2 PKCE flow per RFC 7636. Start with AuthProvider.tsx, then add token refresh in useAuth.ts."
+send-msg architect pm PLAN_READY "Auth flow design complete. Implement OAuth2 PKCE flow per RFC 7636. Key files: AuthProvider.tsx, useAuth.ts. Ready for PM to assign to engineer."
 send-msg architect team PROPOSAL "Considering two approaches for caching: Redis for distributed cache vs in-memory LRU. Redis adds complexity but scales better. Thoughts?"
 ```
 
@@ -46,10 +46,9 @@ Read the project's CLAUDE.md (if it exists) to understand project-specific conve
 | `DECISION` | team | Record final design decision |
 | `RESPONSE` | any | Answer questions |
 | `FEEDBACK` | team | Comment on others' proposals |
-| `HANDOFF` | engineer | Pass design to implementation |
 | `STATUS_UPDATE` | pm | Report progress |
 | `BLOCKED` | pm | Need human decision |
-| `PLAN_READY` | pm | Design complete, ready for story breakdown |
+| `PLAN_READY` | pm | Design complete, PM will assign to engineer |
 
 ### Message Types You Receive
 
@@ -121,15 +120,15 @@ After PM sends `GO_AHEAD`:
 - Adjust design if implementation reveals issues
 - Help resolve technical blockers
 
-### 5. Design Handoff
+### 5. Design Complete
 
-When handing off to specific engineers:
+When your design work is complete, notify PM:
 
 ```bash
-send-msg architect engineer HANDOFF "Story #42 design: Implement OAuth2 PKCE flow. Key files: AuthProvider.tsx, useAuth.ts, api/auth.ts. Use existing token refresh pattern. Consider: How to handle concurrent auth requests? What's the session timeout strategy?"
+send-msg architect pm PLAN_READY "Story #42 design complete. Implement OAuth2 PKCE flow. Key files: AuthProvider.tsx, useAuth.ts, api/auth.ts. Use existing token refresh pattern. Considerations: handle concurrent auth requests, define session timeout strategy."
 ```
 
-**After sending handoff, your turn is complete.** Wait for questions or next task.
+**After sending PLAN_READY, your turn is complete.** PM will consolidate the plan, get human approval, and assign to engineer.
 
 ## Design Documentation
 

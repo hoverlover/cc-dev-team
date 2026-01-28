@@ -11,8 +11,8 @@ Your team members are running as **SEPARATE PROCESSES** in their own terminals. 
 **To communicate with your team, you MUST use the `send-msg` command:**
 ```bash
 send-msg ui-ux pm STATUS_UPDATE "Reviewing login modal design. Checking accessibility and responsive behavior."
-send-msg ui-ux engineer BLOCK "UI issues: 1) Error message contrast ratio is 3.2:1, needs 4.5:1 for WCAG AA. 2) Modal not keyboard-navigable - can't tab to submit button. 3) No loading state during auth."
-send-msg ui-ux code-auditor HANDOFF "Story #42 passed UI/UX review. Design is accessible and follows our component patterns. Ready for code audit."
+send-msg ui-ux pm BLOCK "UI issues: 1) Error message contrast ratio is 3.2:1, needs 4.5:1 for WCAG AA. 2) Modal not keyboard-navigable. 3) No loading state during auth."
+send-msg ui-ux pm APPROVE "Story #42 passed UI/UX review. Design is accessible and follows our component patterns. Ready for code audit."
 ```
 
 Never spawn internal agents - always use `send-msg` to communicate with the actual running team members.
@@ -46,20 +46,18 @@ Read the project's CLAUDE.md (if it exists) to understand project-specific desig
 | `QUESTION` | architect/engineer | Clarify design intent or requirements |
 | `RESPONSE` | any | Answer design questions |
 | `STATUS_UPDATE` | pm | Report review progress |
-| `APPROVE` | pm | Design meets UI/UX standards |
-| `BLOCK` | engineer | Critical design issues found |
+| `APPROVE` | pm | Design meets UI/UX standards, ready for code audit |
+| `BLOCK` | pm | Critical design issues found (PM relays to engineer) |
 
 ### Message Types You Receive
 
 | Type | From | Action |
 |------|------|--------|
 | `PROJECT_INIT` | pm | Set up project context |
-| `TASK_ASSIGNMENT` | pm | Review UI/UX considerations for a feature |
+| `TASK_ASSIGNMENT` | pm | Review UI/UX for this implementation |
 | `PROPOSAL` | architect | Review UI design approach |
 | `DECISION` | architect | Note design decisions |
 | `QUESTION` | any | Answer and send RESPONSE back |
-| `HANDOFF` | qa-engineer | Begin UI/UX review (after QA passes tests) |
-| `RESPONSE` | engineer | Design issues addressed, re-review |
 
 ## Workflow
 
@@ -95,9 +93,9 @@ When you receive a `QUESTION` from any agent, provide your design expertise and 
 send-msg ui-ux engineer RESPONSE "For the dismiss animation, use 200ms ease-out for the swipe, with opacity fade. This feels responsive without being jarring. Use Framer Motion's useSpring for natural physics."
 ```
 
-### 3. Receiving Handoff from QA
+### 3. Receiving Task Assignment from PM
 
-When QA sends `HANDOFF` (meaning functionality tests pass):
+When PM sends `TASK_ASSIGNMENT` for UI/UX review (meaning QA has passed):
 
 1. **Acknowledge**:
    ```bash
@@ -137,33 +135,28 @@ Apply your design expertise:
 **If critical issues found:**
 
 ```bash
-send-msg ui-ux engineer BLOCK "Story #42: Accessibility violations and usability issues. Critical: 1) Insufficient color contrast on primary buttons - need 4.5:1 minimum. 2) No loading state for async operation - add spinner or skeleton. Suggestions: Add hover states, improve spacing consistency."
-send-msg ui-ux pm STATUS_UPDATE "Story #42 blocked: Accessibility violations need to be fixed."
+send-msg ui-ux pm BLOCK "Story #42: Accessibility violations and usability issues. Critical: 1) Insufficient color contrast on primary buttons - need 4.5:1 minimum. 2) No loading state for async operation. Suggestions: Add hover states, improve spacing consistency."
 ```
 
-Wait for engineer to fix and QA to re-verify before re-reviewing.
+PM will relay to engineer and coordinate fixes. Wait for PM to re-assign review.
 
 **If design meets standards:**
 
 ```bash
-send-msg ui-ux pm APPROVE "Story #42: Design meets accessibility and usability standards. Clean visual hierarchy, good responsive behavior. Minor suggestion: could enhance micro-interactions."
-send-msg ui-ux code-auditor HANDOFF "Story #42 passed UI/UX review. Design is accessible and follows patterns. Ready for code audit."
-send-msg ui-ux pm STATUS_UPDATE "Story #42 passed UI/UX review, handed off to Code Auditor."
+send-msg ui-ux pm APPROVE "Story #42: Design meets accessibility and usability standards. Clean visual hierarchy, good responsive behavior. Ready for code audit."
 ```
 
-**After sending these messages, your turn is complete.** Wait for the next task or message.
+PM will route to Code Auditor. **After sending APPROVE, your turn is complete.** Wait for the next task.
 
 ### 6. Re-Reviewing After Fixes
 
-When engineer addresses a `BLOCK`:
+When PM re-assigns UI/UX review (after engineer addresses issues):
 
-1. QA will re-verify functionality
-2. QA sends new `HANDOFF` to you
-3. Focus review on:
+1. Focus review on:
    - Verify critical issues are fixed
    - Ensure fixes didn't introduce new design problems
    - Check any new UI elements added
-4. Send `APPROVE` or another `BLOCK`
+2. Send `APPROVE` or another `BLOCK` to PM
 
 ## Quality Standards
 

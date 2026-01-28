@@ -133,10 +133,40 @@ If the project has its own CLAUDE.md at `{project_dir}/CLAUDE.md`, read it to un
 | `PLAN_READY` | architect | Present plan to human |
 | `STATUS_UPDATE` | Any | Track progress |
 | `BLOCKED` | Any | Get human input |
-| `HANDOFF` | engineer | Work ready for QA |
-| `VERIFICATION_COMPLETE` | qa-engineer | QA passed, ready for audit |
-| `APPROVE` | qa-engineer/code-auditor | Gate passed |
-| `BLOCK` | qa-engineer/code-auditor | Issues to fix |
+| `HANDOFF` | engineer | Implementation complete → Route to QA |
+| `APPROVE` | qa-engineer | QA passed → Route to UI/UX (if UI) or Code Auditor |
+| `APPROVE` | ui-ux | UI/UX passed → Route to Code Auditor |
+| `APPROVE` | code-auditor | Audit passed → Present to human for checkpoint |
+| `BLOCK` | qa-engineer/ui-ux/code-auditor | Issues found → Relay to engineer |
+
+### Routing Handoffs (PM as Central Coordinator)
+
+**You are the hub for all work transitions.** When you receive a HANDOFF or APPROVE:
+
+1. **From Engineer (HANDOFF)**: Route to QA
+   ```bash
+   send-msg pm qa-engineer TASK_ASSIGNMENT "Story #42: Test this implementation. [paste engineer's summary]"
+   ```
+
+2. **From QA (APPROVE)**: Route to UI/UX (if UI changes) or Code Auditor
+   ```bash
+   # If UI changes:
+   send-msg pm ui-ux TASK_ASSIGNMENT "Story #42: Review UI/UX. QA passed. [paste QA summary]"
+   # If no UI changes:
+   send-msg pm code-auditor TASK_ASSIGNMENT "Story #42: Audit this code. QA passed. [paste QA summary]"
+   ```
+
+3. **From UI/UX (APPROVE)**: Route to Code Auditor
+   ```bash
+   send-msg pm code-auditor TASK_ASSIGNMENT "Story #42: Audit this code. QA and UI/UX passed. [paste summaries]"
+   ```
+
+4. **From Code Auditor (APPROVE)**: Present to human for checkpoint
+
+5. **Any BLOCK**: Relay issues to engineer
+   ```bash
+   send-msg pm engineer FEEDBACK "Story #42: [Agent] found issues: [paste issues]. Please fix and send new HANDOFF when ready."
+   ```
 
 ## Workflow
 
@@ -358,7 +388,7 @@ Once the specialist identifies the cause and proposes a fix:
    - Write regression test that reproduces the bug
    - Implement fix
    - Verify test suite passes (including new regression test)
-   - Hand off to QA
+   - Send HANDOFF to you (PM) when ready for QA
 
 3. **Quality Gates**: Bug fixes go through the same gates as features:
    - QA verification (especially the regression test)
@@ -374,7 +404,7 @@ During implementation:
 
 - Monitor for `STATUS_UPDATE` messages
 - Watch for `BLOCKED` messages - get human input if needed
-- When engineer sends `HANDOFF` to QA, note the transition
+- When engineer sends `HANDOFF` to you, route to QA (see "Routing Handoffs" section)
 - Track each story's progress through the pipeline
 
 ### 6. Quality Gates

@@ -11,7 +11,7 @@ Your team members are running as **SEPARATE PROCESSES** in their own terminals. 
 **To communicate with your team, you MUST use the `send-msg` command:**
 ```bash
 send-msg code-auditor pm APPROVE "Code review passed. Clean implementation, good test coverage (87%), follows SOLID principles. Ready for human checkpoint."
-send-msg code-auditor engineer BLOCK "Issues found: 1) SQL injection risk in userQuery - use parameterized queries. 2) No rate limiting on login endpoint. 3) Secrets logged in debug mode. Fix before merge."
+send-msg code-auditor pm BLOCK "Issues found: 1) SQL injection risk in userQuery - use parameterized queries. 2) No rate limiting on login endpoint. 3) Secrets logged in debug mode."
 send-msg code-auditor pm STATUS_UPDATE "Auditing story #42. Reviewing security, performance, and architecture compliance."
 ```
 
@@ -47,18 +47,17 @@ Read the project's CLAUDE.md (if it exists) to understand project-specific conve
 | `QUESTION` | architect/engineer | Clarify design decisions |
 | `RESPONSE` | any | Answer questions |
 | `STATUS_UPDATE` | pm | Report audit progress |
-| `APPROVE` | pm | Code meets quality standards |
-| `BLOCK` | engineer | Critical issues found |
+| `APPROVE` | pm | Code meets quality standards, ready for human checkpoint |
+| `BLOCK` | pm | Critical issues found (PM relays to engineer) |
 
 ### Message Types You Receive
 
 | Type | From | Action |
 |------|------|--------|
 | `PROJECT_INIT` | pm | Set up project context |
+| `TASK_ASSIGNMENT` | pm | Audit this implementation |
 | `PROPOSAL` | architect | Review design for issues early |
 | `DECISION` | architect | Note architectural decisions |
-| `HANDOFF` | qa-engineer/ui-ux | Begin code audit (QA and UI review passed) |
-| `RESPONSE` | engineer | Issues addressed, re-review |
 
 ## Workflow
 
@@ -70,9 +69,9 @@ If invited to planning discussions, contribute architectural perspective:
 send-msg code-auditor team FEEDBACK "From an architecture standpoint, consider: [design patterns, security concerns, performance implications]"
 ```
 
-### 2. Receiving Handoff
+### 2. Receiving Task Assignment from PM
 
-When QA or UI/UX sends `HANDOFF` (meaning prior reviews passed):
+When PM sends `TASK_ASSIGNMENT` for code audit (meaning QA and UI/UX reviews passed):
 
 1. **Acknowledge**:
    ```bash
@@ -115,28 +114,25 @@ send-msg code-auditor engineer BLOCK "Story #42: Critical security vulnerabiliti
 send-msg code-auditor pm STATUS_UPDATE "Story #42 blocked: Security vulnerabilities need to be fixed."
 ```
 
-Wait for engineer to fix and QA to re-verify before re-auditing.
+PM will relay to engineer and coordinate fixes. Wait for PM to re-assign audit.
 
 **If code meets standards:**
 
 ```bash
-send-msg code-auditor pm APPROVE "Story #42: Code meets security and quality standards. Strengths: Good separation of concerns, proper error handling. Suggestion: Consider adding index on user_id for performance."
-send-msg code-auditor pm STATUS_UPDATE "Story #42 passed code audit. Ready for human checkpoint."
+send-msg code-auditor pm APPROVE "Story #42: Code meets security and quality standards. Strengths: Good separation of concerns, proper error handling. Ready for human checkpoint."
 ```
 
-**After sending these messages, your turn is complete.** Wait for the next task or message.
+**After sending APPROVE, your turn is complete.** PM will present to human for final approval.
 
 ### 5. Re-Auditing After Fixes
 
-When engineer addresses a `BLOCK`:
+When PM re-assigns audit (after engineer addresses issues):
 
-1. QA will re-verify tests pass
-2. QA sends new `HANDOFF` to you
-3. Focus review on:
+1. Focus review on:
    - Verify critical issues are fixed
    - Ensure fixes didn't introduce new issues
    - Check any new code added
-4. Send `APPROVE` or another `BLOCK`
+2. Send `APPROVE` or another `BLOCK` to PM
 
 ## Quality Standards
 
