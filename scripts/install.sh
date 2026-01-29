@@ -6,6 +6,7 @@ set -e
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 ORCHESTRATOR_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+CLAUDE_COMMANDS_DIR="$HOME/.claude/commands"
 
 echo "Installing CC Dev Team..."
 echo "Directory: $ORCHESTRATOR_DIR"
@@ -15,6 +16,31 @@ echo ""
 echo "Installing npm dependencies..."
 cd "$ORCHESTRATOR_DIR"
 npm install
+
+# Install required skills (agent-invoked, stored in ~/.claude/commands/)
+# Note: Project-level skills take precedence over user-level,
+# so users can override these by placing custom versions in their project's .claude/commands/
+echo ""
+echo "Installing skills..."
+mkdir -p "$CLAUDE_COMMANDS_DIR"
+
+REQUIRED_SKILLS="new-feature smart-commit worktree dev-server"
+for skill in $REQUIRED_SKILLS; do
+  SOURCE_FILE="$ORCHESTRATOR_DIR/skills/$skill.md"
+
+  if [ -f "$SOURCE_FILE" ]; then
+    cp "$SOURCE_FILE" "$CLAUDE_COMMANDS_DIR/$skill.md"
+    echo "  ✓ /$skill"
+  else
+    echo "  ! Warning: $skill.md not found in skills/"
+  fi
+done
+
+# Create worktrees directory
+echo ""
+echo "Creating worktrees directory..."
+mkdir -p "$HOME/.cc-dev-team/worktrees"
+echo "  ✓ ~/.cc-dev-team/worktrees"
 
 # Generate settings.json for each agent
 AGENTS="pm architect engineer qa-engineer ui-ux code-auditor"
@@ -62,11 +88,59 @@ for agent in $AGENTS; do
     "allow": [
       "Bash(send-msg:*)",
       "Bash(rename-sessions:*)",
+      "Bash(set-issue-bar:*)",
       "Bash(get-roster)",
       "Bash(git:*)",
       "Bash(cd:*)",
       "Bash(gh:*)",
       "Skill(new-feature)"
+    ]
+  }
+}
+EOF
+  elif [ "$agent" = "engineer" ]; then
+    # Engineer gets skill permissions and Edit/Write for dev workflow
+    cat > "$SETTINGS_FILE" << EOF
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "$ORCHESTRATOR_DIR/hooks/session-start.py"
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Read|Edit|Write|Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "$ORCHESTRATOR_DIR/hooks/check-pending.py"
+          }
+        ]
+      }
+    ]
+  },
+  "permissions": {
+    "allow": [
+      "Edit($HOME/.cc-dev-team/worktrees/**)",
+      "Write($HOME/.cc-dev-team/worktrees/**)",
+      "Bash(send-msg:*)",
+      "Bash(sync-workspace:*)",
+      "Bash(get-roster)",
+      "Bash(git:*)",
+      "Bash(cd:*)",
+      "Bash(gh:*)",
+      "Bash(npm:*)",
+      "Bash(npx:*)",
+      "Bash(bun:*)",
+      "Skill(smart-commit)",
+      "Skill(worktree)",
+      "Skill(dev-server)"
     ]
   }
 }
