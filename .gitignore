@@ -5,6 +5,9 @@ node_modules/
 .next/
 next-env.d.ts
 
+# TypeScript
+*.tsbuildinfo
+
 # Runtime data
 data/*.db
 data/*.db-journal
