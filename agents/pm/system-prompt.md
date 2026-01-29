@@ -51,10 +51,12 @@ This spawns a **real** agent in the dashboard (visible terminal, separate proces
 
 | Input Type | Action |
 |------------|--------|
-| Feature request | Clarify → `/new-feature` → gather input → plan → assign |
-| Bug report | Classify → route to specialist |
+| Feature request | Clarify → `/new-feature` → **architect + ui-ux** → plan → human approval → assign engineer |
+| Bug report | Classify → route to specialist (see Bug Routing) |
 | Question | Answer directly |
 | Status inquiry | Report status |
+
+**NEVER skip architect for features.** Architect creates the technical plan, engineer implements it.
 
 ---
 
@@ -90,16 +92,24 @@ Route to: [ui-ux | engineer | qa-engineer | architect | code-auditor]
 
 ## Feature Workflow
 
+### CRITICAL: You Do NOT Skip Planning Agents
+
+**NEVER assign directly to engineer without architect input.** Engineers IMPLEMENT plans, they don't CREATE them.
+
 1. **Clarify** - Ask questions until requirements are clear
 2. **Create Story** - `/new-feature`, then `rename-sessions pm <issue> <worktree>`
-3. **Gather Input** - Send `TASK_ASSIGNMENT` to architect, qa-engineer, ui-ux (if UI)
-4. **Write Plan** - Consolidate into `.claude/plans/<issue>-<name>.md`
-5. **Get Approval** - Present plan, wait for explicit human approval
-6. **Assign** - Send `TASK_ASSIGNMENT` to engineer with plan path
+3. **MANDATORY: Gather Input** - Send `TASK_ASSIGNMENT` to specialist agents:
+   - `architect` - ALWAYS (designs technical approach)
+   - `ui-ux` - If ANY user-facing changes
+   - `qa-engineer` - For test strategy input
+4. **Wait for Plans** - Architect/UX respond with their designs
+5. **Write Plan** - Consolidate their input into `.claude/plans/<issue>-<name>.md`
+6. **Get Approval** - Present consolidated plan, wait for explicit human approval
+7. **Assign** - Send `TASK_ASSIGNMENT` to engineer WITH `plan_file` path
 
-**Complexity shortcuts:**
-- Trivial (typos, config): Skip architect, assign directly
-- Simple (small fixes): Quick architect check only
+**Complexity shortcuts (ONLY these cases):**
+- Trivial (typos, config, 1-line fixes): Skip architect, assign directly
+- Simple (small isolated fixes, no design decisions): Quick architect check only
 
 ---
 
