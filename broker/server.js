@@ -514,6 +514,15 @@ io.on('connection', (socket) => {
     socket.join(`session:${session.id}:agent:${agentRole}`)
     socket.join(`session:${session.id}:team`)
 
+    // Numbered agents (engineer-1, engineer-2, etc.) also join the base role room
+    // so messages to "engineer" reach all engineer instances
+    const baseRoleMatch = agentRole.match(/^(.+)-\d+$/)
+    if (baseRoleMatch) {
+      const baseRole = baseRoleMatch[1]
+      socket.join(`session:${session.id}:agent:${baseRole}`)
+      console.log(`[Broker] ${agentRole} also joined room: agent:${baseRole}`)
+    }
+
     // Notify dashboards in this session that agent joined
     io.to(`session:${session.id}:dashboard`).emit('agent_joined', {
       sessionId: session.id,
@@ -537,11 +546,24 @@ io.on('connection', (socket) => {
 
   // Send unread messages for this session
   if (!isTransient) {
-    const unreadMessages = db.prepare(`
-      SELECT * FROM messages
-      WHERE session_id = ? AND (to_agent = ? OR to_agent = 'team') AND read = 0
-      ORDER BY created_at ASC
-    `).all(session.id, agentRole)
+    // For numbered agents (engineer-1), also get messages sent to base role (engineer)
+    const baseRoleMatch = agentRole.match(/^(.+)-\d+$/)
+    const baseRole = baseRoleMatch ? baseRoleMatch[1] : null
+
+    let unreadMessages
+    if (baseRole) {
+      unreadMessages = db.prepare(`
+        SELECT * FROM messages
+        WHERE session_id = ? AND (to_agent = ? OR to_agent = ? OR to_agent = 'team') AND read = 0
+        ORDER BY created_at ASC
+      `).all(session.id, agentRole, baseRole)
+    } else {
+      unreadMessages = db.prepare(`
+        SELECT * FROM messages
+        WHERE session_id = ? AND (to_agent = ? OR to_agent = 'team') AND read = 0
+        ORDER BY created_at ASC
+      `).all(session.id, agentRole)
+    }
 
     if (unreadMessages.length > 0) {
       console.log(`[Broker] Sending ${unreadMessages.length} unread messages to ${agentRole}`)
@@ -590,15 +612,19 @@ io.on('connection', (socket) => {
 
     // Route message within session
     if (to === 'team') {
-      socket.to(`session:${session.id}:team`).emit('message', message)
+      const teamRoom = `session:${session.id}:team`
+      const teamSize = io.sockets.adapter.rooms.get(teamRoom)?.size || 0
+      socket.to(teamRoom).emit('message', message)
+      console.log(`[Broker] [${session.id}] ${agentRole} → team: ${type} (${teamSize} recipients in room)`)
     } else {
-      io.to(`session:${session.id}:agent:${to}`).emit('message', message)
+      const agentRoom = `session:${session.id}:agent:${to}`
+      const roomSize = io.sockets.adapter.rooms.get(agentRoom)?.size || 0
+      io.to(agentRoom).emit('message', message)
+      console.log(`[Broker] [${session.id}] ${agentRole} → ${to}: ${type} (${roomSize} in room ${agentRoom})`)
     }
 
     // Send to dashboards watching this session
     io.to(`session:${session.id}:dashboard`).emit('message', message)
-
-    console.log(`[Broker] [${session.id}] ${agentRole} → ${to}: ${type}`)
 
     if (callback) callback({ success: true, messageId: message.id })
   })

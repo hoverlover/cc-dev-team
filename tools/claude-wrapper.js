@@ -110,6 +110,9 @@ const PROJECT_FILE = join(instanceDir, 'project-dir')
 // Message queue for team message injection
 const messageQueue = []
 
+// Track messages pending read confirmation (waiting for echo in terminal output)
+const pendingReadConfirmation = []
+
 // Configuration via environment variables
 const STATUS_IDLE_TIMEOUT_MS = parseInt(process.env.STATUS_IDLE_TIMEOUT_MS) || 1500
 const STATUS_DEBOUNCE_MS = parseInt(process.env.STATUS_DEBOUNCE_MS) || 100
@@ -735,6 +738,18 @@ ptyProcess.onData((data) => {
   // Accumulate output in ring buffer for status detection
   outputBuffer.append(data)
 
+  // Check if we see our injected message echoed back - confirms delivery
+  if (data.includes('NEW TEAM MESSAGE') && pendingReadConfirmation.length > 0) {
+    debug('Detected message echo in output - confirming delivery')
+    // Mark all pending as confirmed (they were displayed)
+    for (const pending of pendingReadConfirmation) {
+      if (socket.connected) {
+        socket.emit('mark_read', { messageIds: pending.ids })
+      }
+    }
+    pendingReadConfirmation.length = 0  // Clear the array
+  }
+
   // Always send to broker for dashboard
   if (socket.connected) {
     socket.emit('agent_output', { data })
@@ -880,10 +895,45 @@ function checkAndInject() {
   inject(prompt)
   lastInjected = Date.now()
 
-  if (messageIds.length > 0 && socket.connected) {
-    socket.emit('mark_read', { messageIds })
+  // Don't mark as read immediately - wait for confirmation
+  // Store with timestamp so we can mark as read after delay or on output detection
+  if (messageIds.length > 0) {
+    pendingReadConfirmation.push({
+      ids: messageIds,
+      injectedAt: Date.now(),
+      prompt: prompt.substring(0, 50)  // For debugging
+    })
   }
 }
+
+// Mark messages as read after we see activity (agent responded to them)
+// or after a timeout (to prevent infinite retries)
+function checkPendingReadConfirmation() {
+  if (pendingReadConfirmation.length === 0) return
+
+  const now = Date.now()
+  const CONFIRMATION_TIMEOUT_MS = 10000  // 10 seconds max wait
+
+  // Check if agent has become active since injection (indicates message was received)
+  const agentResponded = tracker.buffer.length > 0 || stateMachine?.state === 'working'
+
+  for (let i = pendingReadConfirmation.length - 1; i >= 0; i--) {
+    const pending = pendingReadConfirmation[i]
+    const elapsed = now - pending.injectedAt
+
+    // Mark as read if: agent responded OR timeout reached
+    if (agentResponded || elapsed > CONFIRMATION_TIMEOUT_MS) {
+      if (socket.connected) {
+        debug(`Marking ${pending.ids.length} message(s) as read (${agentResponded ? 'agent responded' : 'timeout'})`)
+        socket.emit('mark_read', { messageIds: pending.ids })
+      }
+      pendingReadConfirmation.splice(i, 1)
+    }
+  }
+}
+
+// Run confirmation check periodically
+setInterval(checkPendingReadConfirmation, 1000)
 
 setInterval(checkAndInject, CHECK_INTERVAL_MS)
 
