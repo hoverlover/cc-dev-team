@@ -55,6 +55,9 @@ interface SessionState {
   selectedAgent: string | null
   issueNum?: string
   worktreeName?: string
+  issueTitle?: string
+  issueUrl?: string
+  taskSummary?: string
 }
 
 const BROKER_URL = process.env.NEXT_PUBLIC_BROKER_URL || 'http://localhost:3100'
@@ -175,6 +178,12 @@ export default function Dashboard() {
 
   // Subscribe to agent output when terminal is ready
   const handleTerminalReady = useCallback(() => {
+    console.log('[Dashboard] Terminal ready', {
+      hasSocket: !!socketRef.current,
+      selectedAgent: selectedAgentRef.current,
+      activeSession: activeSessionIdRef.current,
+      hasXtermRef: !!xtermRef.current
+    })
     if (socketRef.current && selectedAgentRef.current && activeSessionIdRef.current) {
       socketRef.current.emit('subscribe_output', {
         sessionId: activeSessionIdRef.current,
@@ -312,7 +321,7 @@ export default function Dashboard() {
       success: boolean
       roster?: string[]
       project?: { project_dir: string }
-      session?: { issueNum?: string; worktreeName?: string }
+      session?: { issueNum?: string; worktreeName?: string; issueTitle?: string; issueUrl?: string; taskSummary?: string }
       error?: string
     }) => {
       if (result.success) {
@@ -332,7 +341,10 @@ export default function Dashboard() {
                 ...createEmptySessionState(),
                 agents: new Set(result.roster || []),
                 issueNum: result.session?.issueNum,
-                worktreeName: result.session?.worktreeName
+                worktreeName: result.session?.worktreeName,
+                issueTitle: result.session?.issueTitle,
+                issueUrl: result.session?.issueUrl,
+                taskSummary: result.session?.taskSummary
               }
             }
           }
@@ -342,7 +354,10 @@ export default function Dashboard() {
               ...prev[sessionId],
               agents: new Set(result.roster || []),
               issueNum: result.session?.issueNum ?? prev[sessionId].issueNum,
-              worktreeName: result.session?.worktreeName ?? prev[sessionId].worktreeName
+              worktreeName: result.session?.worktreeName ?? prev[sessionId].worktreeName,
+              issueTitle: result.session?.issueTitle ?? prev[sessionId].issueTitle,
+              issueUrl: result.session?.issueUrl ?? prev[sessionId].issueUrl,
+              taskSummary: result.session?.taskSummary ?? prev[sessionId].taskSummary
             }
           }
         })
@@ -569,10 +584,12 @@ export default function Dashboard() {
     })
 
     // Session metadata update (issue/worktree info)
-    socket.on('session_metadata', ({ sessionId, issueNum, worktreeName }: {
+    socket.on('session_metadata', ({ sessionId, issueNum, worktreeName, issueTitle, issueUrl }: {
       sessionId: string
       issueNum?: string
       worktreeName?: string
+      issueTitle?: string
+      issueUrl?: string
     }) => {
       setSessionStates(prev => {
         const state = prev[sessionId]
@@ -582,7 +599,27 @@ export default function Dashboard() {
           [sessionId]: {
             ...state,
             issueNum,
-            worktreeName
+            worktreeName,
+            issueTitle,
+            issueUrl
+          }
+        }
+      })
+    })
+
+    // Task summary update (from PM)
+    socket.on('task_summary', ({ sessionId, summary }: {
+      sessionId: string
+      summary: string
+    }) => {
+      setSessionStates(prev => {
+        const state = prev[sessionId]
+        if (!state) return prev
+        return {
+          ...prev,
+          [sessionId]: {
+            ...state,
+            taskSummary: summary
           }
         }
       })
@@ -619,8 +656,20 @@ export default function Dashboard() {
 
     // Terminal output
     socket.on('agent_output', ({ sessionId, agent, data }: { sessionId: string; agent: string; data: string }) => {
-      if (sessionId === activeSessionIdRef.current && agent === selectedAgentRef.current && xtermRef.current) {
-        xtermRef.current.write(data)
+      const isMatch = sessionId === activeSessionIdRef.current && agent === selectedAgentRef.current
+      const hasRef = !!xtermRef.current
+      console.log('[Dashboard] agent_output received', {
+        agent,
+        dataLen: data.length,
+        isMatch,
+        hasRef,
+        activeSession: activeSessionIdRef.current,
+        selectedAgent: selectedAgentRef.current
+      })
+      if (isMatch && hasRef) {
+        xtermRef.current!.write(data)
+      } else {
+        console.warn('[Dashboard] agent_output DROPPED', { isMatch, hasRef })
       }
     })
 
@@ -707,14 +756,30 @@ export default function Dashboard() {
       {activeSessionId && currentSessionState && (
         <div className={styles.taskSummaryBar}>
           <div className={styles.taskContext}>
+            <span className={styles.taskLabel}>Assignment:</span>
             {currentSessionState.issueNum ? (
               <>
-                <span className={styles.issueNumber}>#{currentSessionState.issueNum}</span>
-                <span className={styles.separator}>•</span>
-                <span className={styles.worktreeName}>{currentSessionState.worktreeName}</span>
+                {currentSessionState.issueUrl ? (
+                  <a href={currentSessionState.issueUrl} target="_blank" rel="noopener noreferrer" className={styles.issueLink}>
+                    #{currentSessionState.issueNum}
+                  </a>
+                ) : (
+                  <span className={styles.issueNumber}>#{currentSessionState.issueNum}</span>
+                )}
+                {currentSessionState.issueTitle && (
+                  <span className={styles.issueTitle}>{currentSessionState.issueTitle}</span>
+                )}
+                {currentSessionState.worktreeName && (
+                  <>
+                    <span className={styles.separator}>•</span>
+                    <span className={styles.worktreeName}>{currentSessionState.worktreeName}</span>
+                  </>
+                )}
               </>
+            ) : currentSessionState.taskSummary ? (
+              <span className={styles.taskSummary}>{currentSessionState.taskSummary}</span>
             ) : (
-              <span className={styles.noTask}>No active issue</span>
+              <span className={styles.noTask}>none</span>
             )}
           </div>
           <div className={styles.agentActivity}>

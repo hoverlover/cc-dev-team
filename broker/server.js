@@ -331,7 +331,10 @@ io.on('connection', (socket) => {
           name: session.name,
           projectDir: session.projectDir,
           issueNum: session.issueNum,
-          worktreeName: session.worktreeName
+          worktreeName: session.worktreeName,
+          issueTitle: session.issueTitle,
+          issueUrl: session.issueUrl,
+          taskSummary: session.taskSummary
         },
         roster: Array.from(session.agents.keys()),
         project: session.project
@@ -688,12 +691,14 @@ io.on('connection', (socket) => {
 
   // ---- Rename All Sessions ----
 
-  socket.on('rename_sessions', ({ issueNum, worktreeName }, callback) => {
-    console.log(`[Broker] [${session.id}] Renaming all sessions: issue=${issueNum}, worktree=${worktreeName}`)
+  socket.on('rename_sessions', ({ issueNum, worktreeName, issueTitle, issueUrl }, callback) => {
+    console.log(`[Broker] [${session.id}] Renaming all sessions: issue=${issueNum}, worktree=${worktreeName}, title=${issueTitle}`)
 
     // Store on session object
     session.issueNum = issueNum
     session.worktreeName = worktreeName
+    session.issueTitle = issueTitle
+    session.issueUrl = issueUrl
 
     // Broadcast to all agents in this session (including sender)
     io.to(`session:${session.id}:team`).emit('rename_session', { issueNum, worktreeName })
@@ -702,10 +707,29 @@ io.on('connection', (socket) => {
     io.to(`session:${session.id}:dashboard`).emit('session_metadata', {
       sessionId: session.id,
       issueNum,
-      worktreeName
+      worktreeName,
+      issueTitle,
+      issueUrl
     })
 
     if (callback) callback({ success: true, agentCount: session.agents.size })
+  })
+
+  // ---- Set Task Summary (Issue Bar) ----
+
+  socket.on('set_task_summary', ({ summary }, callback) => {
+    console.log(`[Broker] [${session.id}] Setting task summary: ${summary}`)
+
+    // Store on session object
+    session.taskSummary = summary
+
+    // Broadcast to dashboard
+    io.to(`session:${session.id}:dashboard`).emit('task_summary', {
+      sessionId: session.id,
+      summary
+    })
+
+    if (callback) callback({ success: true })
   })
 
   // ---- Sync Workspace (Worktree) ----

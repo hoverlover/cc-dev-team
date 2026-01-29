@@ -714,12 +714,28 @@
 .taskContext {
   display: flex;
   align-items: center;
-  gap: 0.5rem;
+  gap: 0.3rem;
 }
 
 .issueNumber {
   color: var(--accent);
   font-weight: 600;
+}
+
+.issueLink {
+  color: var(--accent);
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.issueLink:hover {
+  text-decoration: underline;
+}
+
+.issueTitle {
+  color: var(--text-secondary);
+  font-style: italic;
+  margin-left: 0.4rem;
 }
 
 .worktreeName {
@@ -733,6 +749,17 @@
 }
 
 .noTask {
+  color: var(--text-secondary);
+  font-style: italic;
+}
+
+.taskLabel {
+  color: var(--text-secondary);
+  font-weight: 600;
+  margin-right: 0.1rem;
+}
+
+.taskSummary {
   color: var(--text-secondary);
   font-style: italic;
 }
