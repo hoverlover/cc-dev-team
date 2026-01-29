@@ -885,6 +885,14 @@ function checkAndInject() {
   if (messageQueue.length === 0) return
   if (!tracker.canInject(IDLE_TIMEOUT_MS)) return
 
+  // Don't inject while agent is actively streaming with extended thinking -
+  // causes API error ("thinking blocks cannot be modified").
+  // Safe to inject during: idle, waiting_input, working (tool execution)
+  if (stateMachine && stateMachine.state === 'thinking') {
+    debug(`Skipping inject - agent is thinking (waiting for idle/working/waiting_input)`)
+    return
+  }
+
   const messages = messageQueue.splice(0, messageQueue.length)
   const messageIds = messages.map(m => m.id).filter(id => id)
 
