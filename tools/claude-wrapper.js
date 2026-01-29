@@ -186,6 +186,7 @@ class StatusStateMachine {
     this.lastThinkingText = ''
     this.lastThinkingSeenAt = 0
     this.idleTransitionAt = 0  // When we last went idle
+    this.lastInputReceivedAt = 0  // When we last received input (for debouncing permission prompts)
   }
 
   // Valid state transitions
@@ -370,15 +371,20 @@ const STATE_PATTERNS = {
   // Tool invocation: exact tool names (may appear differently in stream)
   toolStart: /(?:Bash|Read|Edit|Write|Glob|Grep|Task|WebFetch|WebSearch|TodoWrite|NotebookEdit|AskUserQuestion|Skill)\s*\(/,
 
-  // Permission prompt: actual permission dialogs (NOT the status bar "accept edits on")
-  // Look for: numbered menu options, (y/n) prompts, "Allow" buttons
-  permissionPrompt: /❯\s*1\.\s*(Yes|Allow|Approve)|Do you want to proceed\?|\(y\/n\)\s*$/i,
+  // Permission prompts - all the ways Claude asks for user input:
+  // 1. ">> accept edits on" - edit acceptance prompt (shift+Tab to cycle)
+  // 2. "Do you want to proceed?" with numbered options
+  // 3. Menu with "❯ 1. Yes/Allow/Approve"
+  // 4. Simple "(y/n)" prompts
+  // 5. "Esc to cancel" instruction line (appears in permission dialogs)
+  permissionPrompt: />>.*accept|Do you want to proceed\?|❯\s*1\.\s*(Yes|Allow|Approve)|Esc to cancel.*Tab to amend|\(y\/n\)\s*$/i,
 
   // Completion indicators
   completion: /Brewed for|Cooked for|✓|Done in/i,
 
   // Idle indicators: prompt character at the very end of buffer only
   // Must be at end of string (no |⎿ since that appears mid-response)
+  // The ❯ prompt must NOT be followed by numbered options (that's a permission prompt)
   idlePrompt: /[❯>]\s*$/
 }
 
@@ -418,11 +424,17 @@ function detectStateTransition(buffer, sm) {
   }
 
   // Check for permission prompt (highest priority - needs user input)
+  // But skip if we recently received input (debounce to prevent re-triggering on stale content)
+  const timeSinceInput = now - sm.lastInputReceivedAt
   if (STATE_PATTERNS.permissionPrompt.test(recent)) {
-    debug(`Pattern matched: permissionPrompt`)
-    sm.transition('waiting_input', 'Permission required', true)
-    sm.cancelIdleTimeout()
-    return
+    if (timeSinceInput < 2000) {
+      debug(`Skipping permissionPrompt match - recent input (${timeSinceInput}ms ago)`)
+    } else {
+      debug(`Pattern matched: permissionPrompt`)
+      sm.transition('waiting_input', 'Permission required', true)
+      sm.cancelIdleTimeout()
+      return
+    }
   }
 
   // Check for thinking text like "✳ Fermenting…" - this is the primary indicator
@@ -747,7 +759,11 @@ if (headless) {
     }
     ptyProcess.write(data)
     // If we were waiting for input, transition to thinking (input received)
+    // Also clear the buffer to prevent old permission prompt from re-triggering
     if (stateMachine && stateMachine.state === 'waiting_input') {
+      debug('Input received while waiting_input - clearing buffer and transitioning to thinking')
+      outputBuffer.clear()
+      stateMachine.lastInputReceivedAt = Date.now()
       stateMachine.transition('thinking', 'Processing input...')
     }
   })
