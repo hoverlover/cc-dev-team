@@ -711,17 +711,48 @@ io.on('connection', (socket) => {
   // ---- Sync Workspace (Worktree) ----
 
   socket.on('sync_workspace', ({ path, action }, callback) => {
-    console.log(`[Broker] [${session.id}] Syncing workspace: path=${path}, action=${action}`)
+    const now = Date.now()
+    const SYNC_DEBOUNCE_MS = 5000  // Ignore duplicate syncs within 5 seconds
+
+    // Check for duplicate sync (same path+action within debounce window)
+    const syncKey = `${path}:${action}`
+    if (session.lastSync && session.lastSync.key === syncKey &&
+        (now - session.lastSync.time) < SYNC_DEBOUNCE_MS) {
+      console.log(`[Broker] [${session.id}] Ignoring duplicate workspace sync: ${syncKey} (${now - session.lastSync.time}ms since last)`)
+      if (callback) callback({ success: true, agentCount: session.agents.size, deduplicated: true })
+      return
+    }
+
+    // Track this sync for deduplication
+    session.lastSync = { key: syncKey, time: now, from: agentRole }
+
+    console.log(`[Broker] [${session.id}] Syncing workspace (from ${agentRole}): path=${path}, action=${action}`)
 
     // Store the current workspace path in the session for new agents joining later
     if (action === 'switch') {
       session.workspacePath = path
+
+      // Extract worktree name from path and update issue bar
+      const worktreeName = path.split('/').pop()
+      if (worktreeName && session.issueNum) {
+        session.worktreeName = worktreeName
+        console.log(`[Broker] [${session.id}] Updated worktree name to: ${worktreeName}`)
+
+        // Broadcast updated metadata to dashboard
+        io.to(`session:${session.id}:dashboard`).emit('session_metadata', {
+          sessionId: session.id,
+          issueNum: session.issueNum,
+          worktreeName: session.worktreeName,
+          issueTitle: session.issueTitle,
+          issueUrl: session.issueUrl
+        })
+      }
     } else if (action === 'remove') {
       session.workspacePath = null
     }
 
-    // Broadcast to all agents in this session (including sender)
-    io.to(`session:${session.id}:team`).emit('workspace_sync', { path, action })
+    // Broadcast to other agents in this session (exclude sender with socket.to)
+    socket.to(`session:${session.id}:team`).emit('workspace_sync', { path, action })
 
     // Also notify dashboards
     io.to(`session:${session.id}:dashboard`).emit('workspace_update', {
