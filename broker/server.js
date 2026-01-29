@@ -632,6 +632,14 @@ io.on('connection', (socket) => {
     if (callback) callback({ success: true, messageId: message.id })
   })
 
+  // ---- Spawn Agent (allows PM or other agents to spawn new agents) ----
+
+  socket.on('spawn_agent', ({ role }, callback) => {
+    console.log(`[Broker] ${agentRole} requested spawn of ${role} in session ${session.id}`)
+    const result = spawnAgent(session, role)
+    if (callback) callback(result)
+  })
+
   // ---- Agent Ready (headless info) ----
 
   socket.on('agent_ready', ({ role, headless, terminalSize }) => {
