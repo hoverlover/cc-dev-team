@@ -363,13 +363,23 @@ class StatusStateMachine {
   }
 }
 
+// Custom spinner verbs for CC-Dev-Team (must match .claude/settings.json spinnerVerbs)
+// Using known verbs makes state detection much more reliable
+const CUSTOM_SPINNER_VERBS = [
+  'Architecting', 'Engineering', 'Brewing', 'Crafting', 'Forging',
+  'Assembling', 'Debugging', 'Refactoring', 'Compiling', 'Deploying',
+  'Orchestrating', 'Synthesizing', 'Scheming', 'Plotting', 'Conjuring',
+  'Manifesting', 'Contemplating', 'Deliberating', 'Strategizing', 'Calculating'
+]
+
 // Tightened patterns based on actual Claude Code terminal output
 const STATE_PATTERNS = {
-  // Thinking text patterns - spinner char followed by gerund + ellipsis
-  // Claude shows: "✳ Fermenting…" or "✶ Cogitating…" etc.
-  // IMPORTANT: Only allow actual space chars (not \r\n) to prevent matching
-  // across fragmented terminal refreshes where spinner and text are on different lines
-  thinkingText: /[✳✶✢✱✲✴✵✽✾✿\*·°⊹✻][ ]{0,2}(\w+ing)…/,
+  // Thinking text patterns - match our custom spinner verbs OR generic fallback
+  // Custom verbs: exact match for reliability
+  // Fallback: spinner char followed by gerund + ellipsis (for non-customized sessions)
+  thinkingText: new RegExp(
+    `[✳✶✢✱✲✴✵✽✾✿\\*·°⊹✻][ ]{0,2}(${CUSTOM_SPINNER_VERBS.join('|')}|\\w+ing)…`
+  ),
 
   // Tool invocation: exact tool names (may appear differently in stream)
   toolStart: /(?:Bash|Read|Edit|Write|Glob|Grep|Task|WebFetch|WebSearch|TodoWrite|NotebookEdit|AskUserQuestion|Skill)\s*\(/,
@@ -440,13 +450,15 @@ function detectStateTransition(buffer, sm) {
     }
   }
 
-  // Check for thinking text like "✳ Fermenting…" - this is the primary indicator
+  // Check for thinking text - matches custom spinner verbs (from settings.json) or generic fallback
   const thinkingMatch = recent.match(STATE_PATTERNS.thinkingText)
   if (thinkingMatch) {
-    const thinkingText = thinkingMatch[1] + '…'
+    const verb = thinkingMatch[1]
+    const thinkingText = verb + '…'
+    const isCustomVerb = CUSTOM_SPINNER_VERBS.includes(verb)
     // Skip if this is stale repeated content after going idle
     if (!sm.shouldIgnoreThinkingText(thinkingText)) {
-      debug(`Pattern matched: thinkingText -> ${thinkingMatch[0]}`)
+      debug(`Pattern matched: thinkingText -> "${verb}" (${isCustomVerb ? 'custom' : 'generic'})`)
       sm.transition('thinking', thinkingText)
       sm.scheduleIdleTimeout(buffer)
     }
