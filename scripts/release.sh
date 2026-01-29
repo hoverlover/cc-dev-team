@@ -13,8 +13,12 @@ BUMP_TYPE="${1:-patch}"
 # Check npm login status before doing anything
 echo "Checking npm login status..."
 if ! npm whoami &>/dev/null; then
-  echo "Not logged in to npm. Please run 'npm login' first."
-  exit 1
+  echo "Not logged in to npm. Running npm login..."
+  npm login
+  if ! npm whoami &>/dev/null; then
+    echo "Login failed. Please try again."
+    exit 1
+  fi
 fi
 echo "Logged in as: $(npm whoami)"
 echo ""
