@@ -35,6 +35,7 @@ const XTerminal = forwardRef<XTerminalHandle, XTerminalProps>(({ className, onDa
 
   useImperativeHandle(actualRef, () => ({
     write: (data: string) => {
+      console.log('[XTerminal] write called', { dataLen: data.length, hasTerminal: !!terminalRef.current })
       if (terminalRef.current) {
         const terminal = terminalRef.current
         const buffer = terminal.buffer.active
@@ -135,27 +136,34 @@ const XTerminal = forwardRef<XTerminalHandle, XTerminalProps>(({ className, onDa
     terminalRef.current = terminal
     setIsReady(true)
 
-    // Check if at bottom and update pinned state
-    const checkPinned = () => {
+    // Check if at bottom - used to determine if we should auto-scroll
+    const isAtBottom = () => {
       const buffer = terminal.buffer.active
       const distanceFromBottom = buffer.baseY - buffer.viewportY
-      pinnedToBottomRef.current = distanceFromBottom <= 1
+      return distanceFromBottom <= 1
     }
 
     // IMPORTANT: xterm's onScroll does NOT fire on user scroll (known bug)
     // We must listen to wheel events on the container directly
     // See: https://github.com/xtermjs/xterm.js/issues/3864
+    // ONLY user wheel events can unpin (set to false) - this prevents
+    // automatic scroll events during large writes from incorrectly unpinning
     const handleWheel = () => {
-      // Use requestAnimationFrame to check after xterm processes the scroll
-      requestAnimationFrame(checkPinned)
+      requestAnimationFrame(() => {
+        pinnedToBottomRef.current = isAtBottom()
+      })
     }
     containerRef.current.addEventListener('wheel', handleWheel)
 
-    // onScroll fires when new lines are added (automatic scroll)
-    terminal.onScroll(checkPinned)
-
-    // onLineFeed fires when newlines are written
-    terminal.onLineFeed(checkPinned)
+    // onScroll/onLineFeed fire during writes - these should only RE-PIN
+    // if we've reached the bottom, never unpin (that's only for user scroll)
+    const maybeRepin = () => {
+      if (!pinnedToBottomRef.current && isAtBottom()) {
+        pinnedToBottomRef.current = true
+      }
+    }
+    terminal.onScroll(maybeRepin)
+    terminal.onLineFeed(maybeRepin)
 
     // Handle Shift+Enter for multiline input (sends same as Option+Enter)
     terminal.attachCustomKeyEventHandler((event) => {
@@ -197,7 +205,23 @@ const XTerminal = forwardRef<XTerminalHandle, XTerminalProps>(({ className, onDa
     terminal.textarea?.addEventListener('focus', showCursor)
     containerRef.current.addEventListener('click', showCursor)
 
+    // Refresh terminal when browser tab regains focus/visibility
+    // This fixes blank terminal issues after tab switching or window focus loss
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        console.log('[XTerminal] Tab visible, refreshing terminal')
+        terminal.refresh(0, terminal.rows - 1)
+      }
+    }
+    const handleWindowFocus = () => {
+      console.log('[XTerminal] Window focused, refreshing terminal')
+      terminal.refresh(0, terminal.rows - 1)
+    }
+    document.addEventListener('visibilitychange', handleVisibilityChange)
+    window.addEventListener('focus', handleWindowFocus)
+
     // Notify parent that terminal is ready
+    console.log('[XTerminal] Terminal created and mounted, calling onReady')
     if (onReady) {
       onReady()
     }
@@ -207,9 +231,12 @@ const XTerminal = forwardRef<XTerminalHandle, XTerminalProps>(({ className, onDa
     const textarea = terminal.textarea
 
     return () => {
+      console.log('[XTerminal] Disposing terminal')
       container?.removeEventListener('wheel', handleWheel)
       container?.removeEventListener('click', showCursor)
       textarea?.removeEventListener('focus', showCursor)
+      document.removeEventListener('visibilitychange', handleVisibilityChange)
+      window.removeEventListener('focus', handleWindowFocus)
       terminal.dispose()
     }
   }, [onData])
