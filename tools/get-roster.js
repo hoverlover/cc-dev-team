@@ -9,9 +9,15 @@
 import { io } from 'socket.io-client'
 
 const BROKER_URL = process.env.BROKER_URL || 'http://localhost:3100'
+const SESSION_ID = process.env.SESSION_ID
+
+if (!SESSION_ID) {
+  console.error('SESSION_ID environment variable is required')
+  process.exit(1)
+}
 
 const socket = io(BROKER_URL, {
-  query: { agent: 'roster-check' },
+  query: { agent: 'roster-check', sessionId: SESSION_ID, transient: 'true' },
   timeout: 5000
 })
 
