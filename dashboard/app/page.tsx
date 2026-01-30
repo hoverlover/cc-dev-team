@@ -735,22 +735,31 @@ export default function Dashboard() {
 
       {/* Session tabs */}
       <div className={styles.sessionTabs}>
-        {sessions.map(session => (
-          <div
-            key={session.id}
-            className={`${styles.sessionTab} ${session.id === activeSessionId ? styles.activeTab : ''}`}
-            onClick={() => joinSession(session.id)}
-          >
-            <span className={styles.sessionName}>{session.name}</span>
-            <button
-              className={styles.closeTab}
-              onClick={(e) => handleCloseSession(session.id, e)}
-              title="Close session"
+        {sessions.map(session => {
+          // Check if any agent in this session needs input
+          const sessionState = sessionStates[session.id]
+          const hasAgentNeedingInput = sessionState && Object.values(sessionState.agentStatuses).some(
+            status => status.waitingForInput || status.status === 'waiting_input'
+          )
+
+          return (
+            <div
+              key={session.id}
+              className={`${styles.sessionTab} ${session.id === activeSessionId ? styles.activeTab : ''} ${hasAgentNeedingInput ? styles.needsInput : ''}`}
+              onClick={() => joinSession(session.id)}
             >
-              &times;
-            </button>
-          </div>
-        ))}
+              {hasAgentNeedingInput && <span className={styles.tabInputBadge}>!</span>}
+              <span className={styles.sessionName}>{session.name}</span>
+              <button
+                className={styles.closeTab}
+                onClick={(e) => handleCloseSession(session.id, e)}
+                title="Close session"
+              >
+                &times;
+              </button>
+            </div>
+          )
+        })}
         <button
           className={styles.newSessionButton}
           onClick={() => setShowProjectPicker(true)}

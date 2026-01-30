@@ -526,6 +526,29 @@
   margin-bottom: -1px;
 }
 
+.sessionTab.needsInput {
+  border-color: var(--warning);
+  animation: inputPulse 2s infinite;
+}
+
+.sessionTab.needsInput.activeTab {
+  border-color: var(--warning);
+}
+
+.tabInputBadge {
+  background: var(--warning);
+  color: var(--bg-primary);
+  font-size: 0.65rem;
+  font-weight: 700;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
 .sessionName {
   max-width: 150px;
   overflow: hidden;
