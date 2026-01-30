@@ -313,6 +313,14 @@ export default function Dashboard() {
 
     // Leave current session if any
     if (activeSessionIdRef.current) {
+      // Unsubscribe from current agent's output before leaving
+      // This ensures clean subscription state when switching tabs
+      if (selectedAgentRef.current) {
+        socketRef.current.emit('unsubscribe_output', {
+          sessionId: activeSessionIdRef.current,
+          agent: selectedAgentRef.current
+        })
+      }
       socketRef.current.emit('leave_session', { sessionId: activeSessionIdRef.current })
     }
 
