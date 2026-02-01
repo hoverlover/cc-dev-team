@@ -51,7 +51,7 @@ mkdir -p "$HOME/.cc-dev-team/worktrees"
 echo "  ✓ ~/.cc-dev-team/worktrees"
 
 # Generate settings.json for each agent
-AGENTS="pm architect engineer qa-engineer ui-ux code-auditor"
+AGENTS="pm architect engineer qa-engineer ui-ux code-auditor docs-auditor"
 
 for agent in $AGENTS; do
   AGENT_DIR="$ORCHESTRATOR_DIR/agents/$agent"
@@ -61,6 +61,33 @@ for agent in $AGENTS; do
   mkdir -p "$CLAUDE_DIR"
 
   echo "Generating $SETTINGS_FILE..."
+
+  # Common spinnerVerbs for all agents
+  SPINNER_VERBS='  "spinnerVerbs": {
+    "mode": "replace",
+    "verbs": [
+      "Architecting",
+      "Engineering",
+      "Brewing",
+      "Crafting",
+      "Forging",
+      "Assembling",
+      "Debugging",
+      "Refactoring",
+      "Compiling",
+      "Deploying",
+      "Orchestrating",
+      "Synthesizing",
+      "Scheming",
+      "Plotting",
+      "Conjuring",
+      "Manifesting",
+      "Contemplating",
+      "Deliberating",
+      "Strategizing",
+      "Calculating"
+    ]
+  }'
 
   if [ "$agent" = "pm" ]; then
     # PM agent gets additional permissions and allowExternalMdIncludes
@@ -103,7 +130,8 @@ for agent in $AGENTS; do
       "Bash(gh:*)",
       "Skill(new-feature)"
     ]
-  }
+  },
+$SPINNER_VERBS
 }
 EOF
   elif [ "$agent" = "engineer" ]; then
@@ -150,7 +178,8 @@ EOF
       "Skill(worktree)",
       "Skill(dev-server)"
     ]
-  }
+  },
+$SPINNER_VERBS
 }
 EOF
   else
@@ -189,7 +218,8 @@ EOF
       "Bash(cd:*)",
       "Bash(gh:*)"
     ]
-  }
+  },
+$SPINNER_VERBS
 }
 EOF
   fi
