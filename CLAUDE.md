@@ -4,35 +4,76 @@
 
 This is a multi-agent orchestrator that coordinates a team of AI agents (PM, Architect, Engineer, QA, UI/UX, Code Auditor, Docs Auditor) to work on software development tasks together.
 
-## Installation (For Developers)
+## Settings Generation (Important!)
 
-After cloning, just run `bun dev`. Settings files are generated automatically on startup.
+### Why Templates?
 
-**How it works:**
-- Template files (`agents/*/.claude/settings.template.json`) are tracked in git with placeholders
-- On startup, `scripts/generate-settings.sh` replaces placeholders with actual paths:
-  - `__ORCHESTRATOR_DIR__` → your cloned directory
-  - `__HOME_DIR__` → your home directory
-- Generated `settings.json` files are gitignored (contain machine-specific paths)
+Claude Code requires **absolute paths** for hooks, permissions, and external includes. For example:
+```json
+{
+  "hooks": {
+    "PreToolUse": [{
+      "command": "/Users/alice/code/cc-dev-team/hooks/check-pending.py"  // Must be absolute!
+    }]
+  },
+  "permissions": {
+    "allow": ["Edit(/Users/alice/.cc-dev-team/worktrees/**)"]  // Must be absolute!
+  }
+}
+```
 
-This means settings are always up-to-date with the latest templates.
+The problem: these paths are different on every machine. We can't commit them to git.
 
-### What Install Does
+### The Solution: Templates with Placeholders
 
-**Copied to standard Claude Code locations:**
-| Source | Destination | Why |
-|--------|-------------|-----|
-| `skills/*.md` | `~/.claude/commands/` | Claude Code natively recognizes `/worktree`, `/smart-commit`, etc. |
+We use **template files** (`settings.template.json`) with placeholders that get replaced at runtime:
 
-**Generated with absolute paths (in project location):**
-| File | Why Generated |
-|------|---------------|
-| `agents/*/.claude/settings.json` | Hooks, permissions need absolute paths to wherever the project is installed/cloned |
+```
+Template (tracked in git):           Generated (gitignored):
+__ORCHESTRATOR_DIR__/hooks/...  →   /Users/alice/code/cc-dev-team/hooks/...
+__HOME_DIR__/.cc-dev-team/...   →   /Users/alice/.cc-dev-team/...
+```
 
-**Created:**
-| Directory | Purpose |
-|-----------|---------|
-| `~/.cc-dev-team/worktrees/` | Git worktrees for parallel development |
+### For Developers (Working on this Project)
+
+Just run `bun dev`. Settings are generated automatically on every startup.
+
+```bash
+git clone <repo>
+cd cc-dev-team
+bun dev  # ← Generates settings.json files automatically
+```
+
+**Flow:**
+1. `start-orchestrator.sh` calls `scripts/generate-settings.sh`
+2. Script reads each `agents/*/.claude/settings.template.json`
+3. Replaces `__ORCHESTRATOR_DIR__` with your cloned directory path
+4. Replaces `__HOME_DIR__` with your home directory
+5. Writes `settings.json` (gitignored) next to each template
+
+Settings regenerate on every startup, so they're always in sync with template changes.
+
+### For End Users (Installing the Package)
+
+Run the install script after installing via npm/bunx:
+
+```bash
+bunx cc-dev-team
+./scripts/install.sh  # ← Generates settings and copies skills
+```
+
+**Flow:**
+1. `install.sh` calls `scripts/generate-settings.sh`
+2. Same template replacement process as above
+3. Additionally copies skills to `~/.claude/commands/` for global availability
+
+### What Gets Generated
+
+| Type | Files | Location | Why |
+|------|-------|----------|-----|
+| **Generated** | `settings.json` | `agents/*/.claude/` | Hooks and permissions require absolute paths |
+| **Copied** (install only) | `skills/*.md` | `~/.claude/commands/` | Claude Code recognizes skills globally |
+| **Created** (install only) | worktrees dir | `~/.cc-dev-team/worktrees/` | Git worktrees for parallel development |
 
 **NOT copied (injected at runtime by wrapper):**
 - `agents/*/system-prompt.md` - Injected via `--append-system-prompt`
@@ -41,9 +82,21 @@ This means settings are always up-to-date with the latest templates.
 
 This separation is intentional: the orchestrator controls what each agent sees, rather than relying on Claude Code's standard config locations.
 
+### File Structure
+
+```
+agents/pm/.claude/
+├── settings.template.json   ← Tracked in git (has placeholders)
+└── settings.json            ← Generated, gitignored (has real paths)
+```
+
 ### If Things Break
 
-If agents aren't following workflow or hooks aren't running, re-run `./scripts/install.sh` from your project directory to regenerate settings with correct paths.
+| Symptom | Cause | Fix |
+|---------|-------|-----|
+| Hooks not running | Wrong paths in settings.json | Run `bun dev` or `./scripts/install.sh` |
+| "Command not found" for hooks | Paths point to wrong directory | Delete settings.json, run `bun dev` |
+| Skills not available | Not copied to ~/.claude/commands/ | Run `./scripts/install.sh` |
 
 ---
 
@@ -153,8 +206,9 @@ send-msg <from> <to> <type> "<content>"
 
 | Problem | Solution |
 |---------|----------|
-| Hooks not running | Re-run `./scripts/install.sh` |
-| Skills not available | Re-run `./scripts/install.sh` |
-| Wrong paths in settings.json | Re-run `./scripts/install.sh` |
+| Hooks not running | See [If Things Break](#if-things-break) above |
+| Skills not available | Run `./scripts/install.sh` to copy to ~/.claude/commands/ |
+| Wrong paths in settings.json | Delete settings.json files, run `bun dev` |
 | Agent not following workflow | Check system-prompt.md has correct instructions |
 | Messages not delivered | Check broker is running, agents connected via socket.io |
+| Settings out of date | Automatic for developers (`bun dev`); end users run `install.sh` |

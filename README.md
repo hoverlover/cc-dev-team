@@ -93,6 +93,30 @@ cd cc-dev-team
 ./start-orchestrator.sh
 ```
 
+## For Developers
+
+If you're contributing to this project, use `bun dev` instead of the install script:
+
+```bash
+git clone https://github.com/hoverlover/cc-dev-team.git
+cd cc-dev-team
+bun dev  # Generates settings and starts everything
+```
+
+### Why Settings Are Generated
+
+Claude Code requires **absolute paths** for hooks and permissions in `settings.json` files. Since these paths differ on every machine, we can't commit them to git. Instead:
+
+1. **Templates** (`agents/*/.claude/settings.template.json`) are tracked in git with placeholders
+2. **On startup**, `bun dev` replaces placeholders with your actual paths:
+   - `__ORCHESTRATOR_DIR__` → your cloned directory
+   - `__HOME_DIR__` → your home directory
+3. **Generated** `settings.json` files are gitignored
+
+This means settings auto-regenerate on every startup, staying in sync with template changes.
+
+See [CLAUDE.md](CLAUDE.md) for full architecture details and the development workflow.
+
 ## Starting Components Individually
 
 For development or debugging, you can start components separately:
