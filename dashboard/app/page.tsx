@@ -939,8 +939,9 @@ export default function Dashboard() {
                       <button
                         className={styles.terminalClose}
                         onClick={() => {
-                          if (confirm(`Force kill ${formatAgentName(currentSessionState.selectedAgent)}? This will terminate the agent process.`)) {
-                            handleForceKillAgent(currentSessionState.selectedAgent)
+                          const agent = currentSessionState.selectedAgent
+                          if (agent && confirm(`Force kill ${formatAgentName(agent)}? This will terminate the agent process.`)) {
+                            handleForceKillAgent(agent)
                           }
                         }}
                         title="Kill agent"
