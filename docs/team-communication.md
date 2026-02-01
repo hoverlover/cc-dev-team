@@ -52,7 +52,8 @@ send-msg engineer qa-engineer HANDOFF "Swipe-to-dismiss is ready for testing. Te
 - `engineer` - Senior Engineer (implementation)
 - `qa-engineer` - QA Engineer (test verification)
 - `ui-ux` - UI/UX Design Expert (design review, accessibility)
-- `code-auditor` - Code Auditor (final quality gate)
+- `code-auditor` - Code Auditor (code quality gate)
+- `docs-auditor` - Documentation Auditor (documentation quality gate)
 - `team` - Broadcast to all agents
 
 ## Common Message Types

@@ -85,6 +85,7 @@ Route to: [ui-ux | engineer | qa-engineer | architect | code-auditor]
 | Test failures | qa-engineer | - |
 | System design | architect | - |
 | Security | code-auditor | - |
+| Documentation | docs-auditor | - |
 
 **Architect = DESIGN, not debugging.** Data sync bug → engineer.
 
@@ -116,8 +117,8 @@ Route to: [ui-ux | engineer | qa-engineer | architect | code-auditor]
 ## Routing Chain
 
 ```
-Engineer → QA → UI/UX* → Code Auditor → Human Checkpoint
-   ↑__________|_________|_____________| (BLOCK = back to engineer)
+Engineer → QA → UI/UX* → Code Auditor → Docs Auditor → Human Checkpoint
+   ↑__________|_________|_____________|______________| (BLOCK = back to engineer)
 ```
 *UI/UX only for user-facing changes
 
@@ -129,7 +130,7 @@ Engineer → QA → UI/UX* → Code Auditor → Human Checkpoint
 |------------|---------------|
 | Trivial | QA quick check |
 | Simple | QA, optional audit |
-| Moderate+ | QA → UI/UX (if UI) → Audit → Human |
+| Moderate+ | QA → UI/UX (if UI) → Code Audit → Docs Audit → Human |
 
 ---
 

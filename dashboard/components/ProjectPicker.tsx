@@ -26,7 +26,7 @@ interface ProjectPickerProps {
 }
 
 // All agents are launched by default - PM decides who to involve based on the task
-const ALL_AGENTS = ['pm', 'architect', 'engineer', 'qa-engineer', 'ui-ux', 'code-auditor']
+const ALL_AGENTS = ['pm', 'architect', 'engineer', 'qa-engineer', 'ui-ux', 'code-auditor', 'docs-auditor']
 
 export default function ProjectPicker({ socket, isOpen, onClose, onSelectProject }: ProjectPickerProps) {
   const [loadedPath, setLoadedPath] = useState<string>('') // The actual loaded directory

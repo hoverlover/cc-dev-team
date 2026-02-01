@@ -68,6 +68,7 @@ const AGENT_NAMES: Record<string, string> = {
   'qa-engineer': 'QA Engineer',
   'ui-ux': 'UI/UX Expert',
   'code-auditor': 'Code Auditor',
+  'docs-auditor': 'Docs Auditor',
 }
 
 function isEngineer(agent: string): boolean {
@@ -695,7 +696,7 @@ export default function Dashboard() {
   // Sort agents
   const allAgents = currentSessionState
     ? Array.from(currentSessionState.agents).sort((a, b) => {
-        const order = ['pm', 'architect', 'qa', 'ui-ux', 'code-auditor']
+        const order = ['pm', 'architect', 'qa', 'ui-ux', 'code-auditor', 'docs-auditor']
         const aIdx = order.findIndex(o => a === o)
         const bIdx = order.findIndex(o => b === o)
         if (aIdx !== -1 && bIdx !== -1) return aIdx - bIdx
@@ -874,7 +875,7 @@ export default function Dashboard() {
                   </button>
                   {showAddAgent && (
                     <div className={styles.addAgentMenu}>
-                      {['pm', 'architect', 'engineer', 'qa-engineer', 'ui-ux', 'code-auditor']
+                      {['pm', 'architect', 'engineer', 'qa-engineer', 'ui-ux', 'code-auditor', 'docs-auditor']
                         .filter(role => !allAgents.includes(role))
                         .map(role => (
                           <label key={role} className={styles.addAgentOption}>
@@ -886,7 +887,7 @@ export default function Dashboard() {
                             <span>{formatAgentName(role)}</span>
                           </label>
                         ))}
-                      {['pm', 'architect', 'engineer', 'qa-engineer', 'ui-ux', 'code-auditor']
+                      {['pm', 'architect', 'engineer', 'qa-engineer', 'ui-ux', 'code-auditor', 'docs-auditor']
                         .filter(role => !allAgents.includes(role)).length === 0 ? (
                         <div className={styles.allAgentsRunning}>All agents running</div>
                       ) : (

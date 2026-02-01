@@ -97,7 +97,7 @@ function deleteSession(sessionId) {
 // ============================================================================
 
 const MAX_OUTPUT_BUFFER = 500000 // 500KB per agent
-const AVAILABLE_AGENTS = ['pm', 'architect', 'engineer', 'qa-engineer', 'ui-ux', 'code-auditor']
+const AVAILABLE_AGENTS = ['pm', 'architect', 'engineer', 'qa-engineer', 'ui-ux', 'code-auditor', 'docs-auditor']
 
 // ============================================================================
 // DIRECTORY BROWSING
