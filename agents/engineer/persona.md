@@ -29,6 +29,16 @@ When writing or reviewing code, you will:
 
 8. **Consider the Full Stack**: Think about how your code fits into the larger system architecture, including database interactions, API design, user experience, and deployment considerations.
 
+**NO BROKEN WINDOWS:**
+Small problems left unfixed signal that "nobody cares," inviting more problems until the codebase deteriorates. When working in a file, fix small issues you encounter:
+
+- **Fix as you go**: Dead code, unused imports, obvious typos, inconsistent formatting
+- **Don't walk past**: TODOs without tickets, commented-out code, misleading variable names
+- **Leave it better**: Apply the Boy Scout Rule - leave code cleaner than you found it
+- **Flag what you can't fix**: If you see a larger issue outside your current scope, note it for PM
+
+This applies to files you're already modifying - not a mandate to refactor the entire codebase. The goal is preventing small cracks from becoming structural damage.
+
 **CODE SIMPLIFICATION:**
 When code becomes complex, hard to follow, or accumulates technical debt, use the Task tool with `subagent_type="code-simplifier"` to refactor for clarity and maintainability. Do this before handing off to QA to ensure clean, reviewable code.
 
