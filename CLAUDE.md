@@ -4,13 +4,18 @@
 
 This is a multi-agent orchestrator that coordinates a team of AI agents (PM, Architect, Engineer, QA, UI/UX, Code Auditor, Docs Auditor) to work on software development tasks together.
 
-## Installation
+## Installation (For Developers)
 
-Run `./scripts/install.sh` after cloning or moving the project. This is **required** because:
+After cloning, just run `bun dev`. Settings files are generated automatically on startup.
 
-1. **Settings files need absolute paths** - Claude Code requires absolute paths for hooks, permissions, and includes
-2. **Skills must be copied to user directory** - Skills go to `~/.claude/commands/` so agents can invoke `/worktree`, `/smart-commit`, etc.
-3. **Worktrees directory must exist** - Creates `~/.cc-dev-team/worktrees/` for parallel development
+**How it works:**
+- Template files (`agents/*/.claude/settings.template.json`) are tracked in git with placeholders
+- On startup, `scripts/generate-settings.sh` replaces placeholders with actual paths:
+  - `__ORCHESTRATOR_DIR__` → your cloned directory
+  - `__HOME_DIR__` → your home directory
+- Generated `settings.json` files are gitignored (contain machine-specific paths)
+
+This means settings are always up-to-date with the latest templates.
 
 ### What Install Does
 
@@ -19,10 +24,10 @@ Run `./scripts/install.sh` after cloning or moving the project. This is **requir
 |--------|-------------|-----|
 | `skills/*.md` | `~/.claude/commands/` | Claude Code natively recognizes `/worktree`, `/smart-commit`, etc. |
 
-**Generated with absolute paths (stays in orchestrator):**
+**Generated with absolute paths (in project location):**
 | File | Why Generated |
 |------|---------------|
-| `agents/*/.claude/settings.json` | Hooks, permissions need absolute paths for this installation |
+| `agents/*/.claude/settings.json` | Hooks, permissions need absolute paths to wherever the project is installed/cloned |
 
 **Created:**
 | Directory | Purpose |
@@ -38,7 +43,7 @@ This separation is intentional: the orchestrator controls what each agent sees, 
 
 ### If Things Break
 
-If agents aren't following workflow or hooks aren't running, re-run `./scripts/install.sh` to regenerate settings with correct paths.
+If agents aren't following workflow or hooks aren't running, re-run `./scripts/install.sh` from your project directory to regenerate settings with correct paths.
 
 ---
 

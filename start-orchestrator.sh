@@ -93,6 +93,11 @@ echo -e "${CYAN}║$(printf '%*s' $PAD_LEFT '')${TITLE}$(printf '%*s' $PAD_RIGHT
 echo -e "${CYAN}╚════════════════════════════════════════════════════════════╝${NC}"
 echo ""
 
+# Generate settings files from templates
+echo -e "${YELLOW}Generating settings files...${NC}"
+"$SCRIPT_DIR/scripts/generate-settings.sh"
+echo ""
+
 # Start broker (uses node due to better-sqlite3 native dependency)
 if [ "$START_BROKER" = true ]; then
   echo -e "${YELLOW}Starting message broker...${NC}"

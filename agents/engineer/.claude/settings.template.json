@@ -1,0 +1,68 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "__ORCHESTRATOR_DIR__/hooks/session-start.py"
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Read|Edit|Write|Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "__ORCHESTRATOR_DIR__/hooks/check-pending.py"
+          }
+        ]
+      }
+    ]
+  },
+  "permissions": {
+    "allow": [
+      "Edit(__HOME_DIR__/.cc-dev-team/worktrees/**)",
+      "Write(__HOME_DIR__/.cc-dev-team/worktrees/**)",
+      "Bash(send-msg:*)",
+      "Bash(sync-workspace:*)",
+      "Bash(get-roster)",
+      "Bash(git:*)",
+      "Bash(cd:*)",
+      "Bash(gh:*)",
+      "Bash(npm:*)",
+      "Bash(npx:*)",
+      "Bash(bun:*)",
+      "Skill(smart-commit)",
+      "Skill(worktree)",
+      "Skill(dev-server)"
+    ]
+  },
+  "spinnerVerbs": {
+    "mode": "replace",
+    "verbs": [
+      "Architecting",
+      "Engineering",
+      "Brewing",
+      "Crafting",
+      "Forging",
+      "Assembling",
+      "Debugging",
+      "Refactoring",
+      "Compiling",
+      "Deploying",
+      "Orchestrating",
+      "Synthesizing",
+      "Scheming",
+      "Plotting",
+      "Conjuring",
+      "Manifesting",
+      "Contemplating",
+      "Deliberating",
+      "Strategizing",
+      "Calculating"
+    ]
+  }
+}
