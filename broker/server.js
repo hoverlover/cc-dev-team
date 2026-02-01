@@ -397,10 +397,10 @@ io.on('connection', (socket) => {
       socket.data.outputSubs.add(subKey)
 
       if (isNewSubscription) {
-        console.log(`[Broker] Dashboard subscribed to ${agent} output in session ${sessionId}`)
-
         // Send historical output buffer
         const historicalOutput = session.outputBuffers.get(agent)
+        const bufferSize = historicalOutput ? historicalOutput.length : 0
+        console.log(`[Broker] Dashboard subscribed to ${agent} output in session ${sessionId} (historical buffer: ${bufferSize} bytes)`)
         if (historicalOutput) {
           socket.emit('agent_output', { sessionId, agent, data: historicalOutput })
         }
