@@ -1,6 +1,6 @@
 {
   "name": "@hoverlover/cc-dev-team",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "Multi-agent orchestration for Claude Code - coordinate AI agents for software development",
   "type": "module",
   "bin": {
