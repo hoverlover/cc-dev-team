@@ -890,14 +890,16 @@ io.on('connection', (socket) => {
 const PORT = process.env.BROKER_PORT || 3100
 
 server.listen(PORT, () => {
+  const dbPath = join(DATA_DIR, 'messages.db')
+  const pad = (str, len) => str + ' '.repeat(Math.max(0, len - str.length))
   console.log(`
 ╔════════════════════════════════════════════════════════════╗
 ║                CC DEV TEAM - MESSAGE BROKER                ║
 ╠════════════════════════════════════════════════════════════╣
-║  Status:  RUNNING                                          ║
-║  Port:    ${PORT}                                             ║
-║  Database: ${join(DATA_DIR, 'messages.db')}
-║  Multi-Session: ENABLED                                    ║
+║  ${pad('Status: RUNNING', 56)}║
+║  ${pad('Port: ' + PORT, 56)}║
+║  ${pad('Database: ' + dbPath, 56)}║
+║  ${pad('Multi-Session: ENABLED', 56)}║
 ╚════════════════════════════════════════════════════════════╝
 
 Waiting for connections...
