@@ -235,6 +235,25 @@ function stopAgent(session, role) {
   return { success: false, error: 'Agent not running' }
 }
 
+function forceKillAgent(session, role) {
+  const proc = session.processes.get(role)
+  if (proc) {
+    console.log(`[Broker] Force killing agent ${role} in session ${session.id}`)
+    proc.kill('SIGKILL')
+    // Clean up immediately since SIGKILL doesn't allow graceful cleanup
+    session.processes.delete(role)
+    session.agents.delete(role)
+    session.outputBuffers.delete(role)
+    io.to(`session:${session.id}:dashboard`).emit('agent_left', {
+      sessionId: session.id,
+      role,
+      timestamp: new Date().toISOString()
+    })
+    return { success: true }
+  }
+  return { success: false, error: 'Agent not running' }
+}
+
 // ============================================================================
 // SOCKET.IO CONNECTION HANDLING
 // ============================================================================
@@ -377,6 +396,16 @@ io.on('connection', (socket) => {
         return
       }
       const result = stopAgent(session, role)
+      callback(result)
+    })
+
+    socket.on('force_kill_agent', ({ sessionId, role }, callback) => {
+      const session = getSession(sessionId)
+      if (!session) {
+        callback({ success: false, error: 'Session not found' })
+        return
+      }
+      const result = forceKillAgent(session, role)
       callback(result)
     })
 

@@ -308,6 +308,24 @@ export default function Dashboard() {
     }))
   }, [activeSessionId, sessionStates])
 
+  // Force kill an agent (for frozen/unresponsive agents)
+  const handleForceKillAgent = useCallback((agent: string) => {
+    if (!activeSessionId || !socketRef.current) return
+
+    socketRef.current.emit('force_kill_agent', {
+      sessionId: activeSessionId,
+      role: agent
+    }, (result: { success: boolean; error?: string }) => {
+      if (result.success) {
+        console.log(`[Dashboard] Force killed agent ${agent}`)
+        // Deselect the agent since it's been killed
+        handleSelectAgent(null)
+      } else {
+        console.error(`[Dashboard] Failed to force kill agent: ${result.error}`)
+      }
+    })
+  }, [activeSessionId, handleSelectAgent])
+
   // Join a session (for tab switching)
   const joinSession = useCallback((sessionId: string) => {
     if (!socketRef.current) return
@@ -920,7 +938,12 @@ export default function Dashboard() {
                       <span className={styles.terminalSize}>120x40</span>
                       <button
                         className={styles.terminalClose}
-                        onClick={() => handleSelectAgent(null)}
+                        onClick={() => {
+                          if (confirm(`Force kill ${formatAgentName(currentSessionState.selectedAgent)}? This will terminate the agent process.`)) {
+                            handleForceKillAgent(currentSessionState.selectedAgent)
+                          }
+                        }}
+                        title="Kill agent"
                       >
                         &times;
                       </button>
