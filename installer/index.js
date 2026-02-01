@@ -238,6 +238,12 @@ async function update() {
 }
 
 function start() {
+  logStep('Building dashboard...');
+  execSync('bun run build', {
+    cwd: join(INSTALL_DIR, 'dashboard'),
+    stdio: 'inherit'
+  });
+
   logStep('Starting CC Dev Team...');
 
   log(`\n${colors.bright}Dashboard:${colors.reset} http://localhost:3101`);
