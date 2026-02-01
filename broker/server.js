@@ -896,10 +896,10 @@ server.listen(PORT, () => {
 ╔════════════════════════════════════════════════════════════╗
 ║                CC DEV TEAM - MESSAGE BROKER                ║
 ╠════════════════════════════════════════════════════════════╣
-║  ${pad('Status: RUNNING', 56)}║
-║  ${pad('Port: ' + PORT, 56)}║
-║  ${pad('Database: ' + dbPath, 56)}║
-║  ${pad('Multi-Session: ENABLED', 56)}║
+║  ${pad('Status: RUNNING', 58)}║
+║  ${pad('Port: ' + PORT, 58)}║
+║  ${pad('Database: ' + dbPath, 58)}║
+║  ${pad('Multi-Session: ENABLED', 58)}║
 ╚════════════════════════════════════════════════════════════╝
 
 Waiting for connections...
