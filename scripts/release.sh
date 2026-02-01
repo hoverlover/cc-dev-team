@@ -49,11 +49,12 @@ git tag "v$NEW_VERSION"
 git push origin main
 git push origin "v$NEW_VERSION"
 
-# Publish to npm
+# Publish to npm with browser-based 2FA
 cd "$INSTALLER_DIR"
 echo ""
 echo "Publishing to npm..."
-npm publish --access public
+# Use script to create a pseudo-TTY so npm outputs the web auth URL
+script -q /dev/null npm publish --access public --auth-type=web
 
 echo ""
 echo "✓ Published @hoverlover/cc-dev-team v$NEW_VERSION"
