@@ -86,8 +86,10 @@ trap cleanup SIGINT SIGTERM EXIT
 
 echo -e "${CYAN}╔════════════════════════════════════════════════════════════╗${NC}"
 TITLE="CC DEV TEAM v${VERSION}"
-PAD=$(( (56 - ${#TITLE}) / 2 ))
-printf "${CYAN}║%*s%s%*s║${NC}\n" $PAD "" "$TITLE" $((56 - PAD - ${#TITLE})) ""
+INNER_WIDTH=60
+PAD_LEFT=$(( (INNER_WIDTH - ${#TITLE}) / 2 ))
+PAD_RIGHT=$(( INNER_WIDTH - PAD_LEFT - ${#TITLE} ))
+echo -e "${CYAN}║$(printf '%*s' $PAD_LEFT '')${TITLE}$(printf '%*s' $PAD_RIGHT '')║${NC}"
 echo -e "${CYAN}╚════════════════════════════════════════════════════════════╝${NC}"
 echo ""
 
@@ -143,8 +145,9 @@ fi
 echo ""
 echo -e "${GREEN}╔════════════════════════════════════════════════════════════╗${NC}"
 READY_TITLE="CC DEV TEAM READY (v${VERSION})"
-READY_PAD=$(( (56 - ${#READY_TITLE}) / 2 ))
-printf "${GREEN}║%*s%s%*s║${NC}\n" $READY_PAD "" "$READY_TITLE" $((56 - READY_PAD - ${#READY_TITLE})) ""
+READY_PAD_LEFT=$(( (INNER_WIDTH - ${#READY_TITLE}) / 2 ))
+READY_PAD_RIGHT=$(( INNER_WIDTH - READY_PAD_LEFT - ${#READY_TITLE} ))
+echo -e "${GREEN}║$(printf '%*s' $READY_PAD_LEFT '')${READY_TITLE}$(printf '%*s' $READY_PAD_RIGHT '')║${NC}"
 echo -e "${GREEN}╠════════════════════════════════════════════════════════════╣${NC}"
 echo -e "${GREEN}║  Dashboard: http://localhost:3101                          ║${NC}"
 echo -e "${GREEN}║  Broker:    http://localhost:3100                          ║${NC}"

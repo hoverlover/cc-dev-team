@@ -17,6 +17,14 @@ echo "Installing npm dependencies..."
 cd "$ORCHESTRATOR_DIR"
 npm install
 
+# Build the dashboard
+echo ""
+echo "Building dashboard..."
+cd "$ORCHESTRATOR_DIR/dashboard"
+bun install
+bun run build
+cd "$ORCHESTRATOR_DIR"
+
 # Install required skills (agent-invoked, stored in ~/.claude/commands/)
 # Note: Project-level skills take precedence over user-level,
 # so users can override these by placing custom versions in their project's .claude/commands/
