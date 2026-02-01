@@ -1,6 +1,6 @@
 {
   "name": "cc-dev-team",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Multi-agent orchestration system for software development with Claude Code",
   "type": "module",
   "scripts": {
