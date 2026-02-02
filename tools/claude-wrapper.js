@@ -522,11 +522,15 @@ class InputTracker {
 
     if (this.inEscSeq) {
       if (Date.now() - this.escSeqStart > 100) {
+        // Escape sequence timed out - discard and don't process as normal input
         this.inEscSeq = false
+        return
       } else if ((b >= 65 && b <= 90) || (b >= 97 && b <= 122) || b === 126) {
+        // Valid escape sequence terminator - complete and discard
         this.inEscSeq = false
         return
       } else {
+        // Intermediate escape sequence byte - skip
         return
       }
     }
