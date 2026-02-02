@@ -32,6 +32,10 @@ START_BROKER=true
 START_DASHBOARD=true
 DEV_MODE=false
 
+# Ports (set after parsing --dev flag)
+BROKER_PORT=3100
+DASHBOARD_PORT=3101
+
 # Parse arguments
 while [[ $# -gt 0 ]]; do
   case $1 in
@@ -65,6 +69,13 @@ while [[ $# -gt 0 ]]; do
       ;;
   esac
 done
+
+# Set ports based on mode (dev uses different ports to avoid conflicts with production)
+if [ "$DEV_MODE" = true ]; then
+  BROKER_PORT=3200
+  DASHBOARD_PORT=3102
+fi
+BROKER_URL="http://localhost:${BROKER_PORT}"
 
 # Track PIDs for cleanup
 PIDS=()
@@ -102,7 +113,7 @@ echo ""
 if [ "$START_BROKER" = true ]; then
   echo -e "${YELLOW}Starting message broker...${NC}"
   cd "$SCRIPT_DIR/broker"
-  node server.js &
+  BROKER_PORT=$BROKER_PORT node server.js &
   BROKER_PID=$!
   PIDS+=($BROKER_PID)
   sleep 2
@@ -112,7 +123,7 @@ if [ "$START_BROKER" = true ]; then
     echo -e "${RED}Error: Broker failed to start${NC}"
     exit 1
   fi
-  echo -e "${GREEN}✓ Broker running on port 3100${NC}"
+  echo -e "${GREEN}✓ Broker running on port ${BROKER_PORT}${NC}"
 else
   echo -e "${YELLOW}Skipping broker (--no-broker)${NC}"
 fi
@@ -123,15 +134,15 @@ if [ "$START_DASHBOARD" = true ]; then
   cd "$SCRIPT_DIR/dashboard"
 
   if [ "$DEV_MODE" = true ]; then
-    # Development mode - hot reload
-    bun run dev &
+    # Development mode - hot reload on port 3102, connecting to dev broker
+    NEXT_PUBLIC_DEV_MODE=true NEXT_PUBLIC_BROKER_URL=$BROKER_URL PORT=$DASHBOARD_PORT bun run dev &
   else
     # Production mode - build if needed
     if [ ! -d ".next" ]; then
       echo -e "${YELLOW}Building dashboard (first run)...${NC}"
       bun run build
     fi
-    bun run start &
+    NEXT_PUBLIC_BROKER_URL=$BROKER_URL PORT=$DASHBOARD_PORT bun run start &
   fi
   DASHBOARD_PID=$!
   PIDS+=($DASHBOARD_PID)
@@ -142,7 +153,7 @@ if [ "$START_DASHBOARD" = true ]; then
     echo -e "${RED}Error: Dashboard failed to start${NC}"
     exit 1
   fi
-  echo -e "${GREEN}✓ Dashboard running on port 3101${NC}"
+  echo -e "${GREEN}✓ Dashboard running on port ${DASHBOARD_PORT}${NC}"
 else
   echo -e "${YELLOW}Skipping dashboard (--no-dashboard)${NC}"
 fi
@@ -154,8 +165,8 @@ READY_PAD_LEFT=$(( (INNER_WIDTH - ${#READY_TITLE}) / 2 ))
 READY_PAD_RIGHT=$(( INNER_WIDTH - READY_PAD_LEFT - ${#READY_TITLE} ))
 echo -e "${GREEN}║$(printf '%*s' $READY_PAD_LEFT '')${READY_TITLE}$(printf '%*s' $READY_PAD_RIGHT '')║${NC}"
 echo -e "${GREEN}╠════════════════════════════════════════════════════════════╣${NC}"
-echo -e "${GREEN}║  Dashboard: http://localhost:3101                          ║${NC}"
-echo -e "${GREEN}║  Broker:    http://localhost:3100                          ║${NC}"
+printf "${GREEN}║  Dashboard: http://localhost:%-6s                        ║${NC}\n" "$DASHBOARD_PORT"
+printf "${GREEN}║  Broker:    http://localhost:%-6s                        ║${NC}\n" "$BROKER_PORT"
 echo -e "${GREEN}╠════════════════════════════════════════════════════════════╣${NC}"
 echo -e "${GREEN}║  Open the dashboard and select a project folder to         ║${NC}"
 echo -e "${GREEN}║  launch your AI team. Agents will start automatically.     ║${NC}"

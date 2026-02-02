@@ -730,7 +730,7 @@ export default function Dashboard() {
       <header className={styles.header}>
         <div className={styles.headerTitle}>
           <h1>CC Dev Team</h1>
-          <span className={styles.versionBadge}>v{packageJson.version}</span>
+          <span className={styles.versionBadge}>v{packageJson.version}{process.env.NEXT_PUBLIC_DEV_MODE === 'true' ? '-dev' : ''}</span>
         </div>
         <div className={styles.headerControls}>
           <div className={styles.viewToggle}>
