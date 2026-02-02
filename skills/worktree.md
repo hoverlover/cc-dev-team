@@ -39,7 +39,8 @@ Create a new worktree for the specified branch.
    - If not: `git worktree add -b <branch> <path>`
 9. Copy local config files like .env* recursively from the source directory into the worktree
 10. rm -rf .next in the worktree
-11. Report success with the full path and how to navigate there
+11. Report success with the full path
+12. **Immediately `cd` into the worktree** - do NOT wait for user confirmation, just change directory automatically
 
 ---
 
