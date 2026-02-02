@@ -799,6 +799,7 @@ export default function Dashboard() {
                 {currentSessionState.issueUrl ? (
                   <a href={currentSessionState.issueUrl} target="_blank" rel="noopener noreferrer" className={styles.issueLink}>
                     #{currentSessionState.issueNum}
+                    <span className={styles.externalLinkIcon} title="Opens in new tab">↗</span>
                   </a>
                 ) : (
                   <span className={styles.issueNumber}>#{currentSessionState.issueNum}</span>
