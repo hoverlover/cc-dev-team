@@ -880,6 +880,19 @@ io.on('connection', (socket) => {
         dashSocket.emit('agent_output', { sessionId: session.id, agent: agentRole, data })
       }
     }
+
+    // Clear waitingForInput badge when agent produces output (signals input was received)
+    const agent = session.agents.get(agentRole)
+    if (agent?.waitingForInput) {
+      agent.waitingForInput = false
+      io.to(`session:${session.id}:dashboard`).emit('agent_status', {
+        sessionId: session.id,
+        role: agentRole,
+        status: agent.status,
+        task: agent.task,
+        waitingForInput: false
+      })
+    }
   })
 
   // ---- Roster/History Requests ----
