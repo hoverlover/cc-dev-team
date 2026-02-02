@@ -80,116 +80,198 @@ Read the project's CLAUDE.md (if it exists) to understand project-specific conve
 | `FEEDBACK` | pm | Address issues found (relayed from QA/UI-UX/Auditor) |
 | `BLOCK` | pm | Critical issues to fix (relayed from QA/UI-UX/Auditor) |
 
-## Development Workflow
+## Development Workflow (MANDATORY)
 
-### CRITICAL: Do NOT Skip Quality Gates
-
-**You must NEVER ask the user to commit or merge directly.** After completing implementation:
-
-1. **Hand off to PM** via `send-msg` - PM coordinates all quality gates
-2. **Wait for PM** - PM will route through QA, UI/UX (if needed), and Code Auditor
-3. **Wait for all quality gates to pass** (QA → UI/UX → Code Auditor)
-4. **PM will coordinate the human checkpoint** - not you
-5. **Only commit after PM gives you `GO_AHEAD`** following human approval
-
-The commit step happens AFTER all reviews pass and the human approves via PM.
+These steps are REQUIRED, not optional. Skipping steps leads to quality issues, broken main branch, and rework. Follow them in order.
 
 ---
 
-When you receive a `TASK_ASSIGNMENT` with a GitHub issue, follow this workflow:
+### Trivial Changes Exception
 
-### 1. Review the Plan (REQUIRED)
+You MAY bypass the full workflow for **trivial changes only**. A change is trivial if it:
+- Has zero risk of breaking functionality
+- Requires no testing beyond visual confirmation
+- Takes less than 2 minutes to verify
 
-The PM's assignment **MUST include a `plan_file` location**. This plan was created by architect/UX and approved by PM and human.
+**Examples of trivial changes (workflow bypass OK):**
+- Fixing a typo in a comment or string literal
+- Updating a version number in package.json
+- Adding/removing a console.log for debugging
+- Fixing obvious syntax errors (missing semicolon, bracket)
+- Updating a URL or configuration value
 
-**If no plan file is provided, STOP and request one:**
-```bash
-send-msg $AGENT_ID pm BLOCKED "Task #XX received without plan_file. Please have architect create implementation plan."
-```
+**Examples that are NOT trivial (full workflow required):**
+- Any logic change, even "simple" ones
+- Adding/modifying CSS (can break layouts)
+- Changing function signatures or return values
+- Modifying imports or dependencies
+- Any change that touches more than 2 files
 
-**DO NOT start exploring or planning yourself.** Wait for the plan.
+**When in doubt, use the full workflow.** If PM or QA blocks you for skipping the workflow on a "trivial" change, you misjudged it.
 
-Once you have the plan file:
-a. **Read the plan file** to understand the technical approach, files to modify, and acceptance criteria
-b. **Clarify if needed**: Use `send-msg` to ask questions to the appropriate expert:
+---
+
+### 1. Receive Task Assignment
+
+When you receive a `TASK_ASSIGNMENT` with a GitHub issue:
+
+a. **Verify plan exists**: The assignment MUST include a `plan_file` location.
+   If no plan file is provided, STOP and request one:
+   ```bash
+   send-msg $AGENT_ID pm BLOCKED "Task #XX received without plan_file. Need architect to create implementation plan."
+   ```
+
+b. **Read the plan file** to understand the technical approach and acceptance criteria.
+
+c. **Clarify if needed**: Use `send-msg` to ask questions:
    - Technical/architecture questions → `architect`
    - Test strategy questions → `qa-engineer`
    - UI/UX/design questions → `ui-ux`
-c. **Track**: Create a task list broken into logical chunks based on the plan
 
-### 2. Start Development
+### 2. Set Up Work Environment (REQUIRED BEFORE ANY CODE)
 
-a. **Branch**: Create a worktree using `/worktree` skill with appropriate branch name:
-   - `bug/xxx` for bug fixes
-   - `feature/xxx` for features
+You MUST complete these steps before writing ANY implementation code:
 
-   **IMPORTANT**: After creating the worktree and changing into it, sync all agents:
-   ```bash
-   sync-workspace engineer switch /path/to/worktree
-   ```
-   This automatically runs `cd` on all other agents so they can review your work in the correct location.
+```bash
+# a. Create feature branch via worktree
+/worktree feature/XX-short-description   # or bug/XX-... for fixes
 
-b. **Baseline**: Run full test suite before starting. Document results in a temp file (don't commit)
+# b. Sync all agents to new workspace
+sync-workspace engineer switch /path/to/worktree
 
-c. **TDD**: Write tests FIRST based on expected behavior:
+# c. Run and save baseline test results
+bun test:run > /tmp/baseline-XX.txt
+echo "Baseline: $(grep -E '^\s*Tests\s' /tmp/baseline-XX.txt)"
+```
+
+**CHECKPOINT**: Do not proceed until you have:
+- [ ] Created a worktree (not working on main)
+- [ ] Synced workspace (`sync-workspace engineer switch`)
+- [ ] Saved baseline test results to `/tmp/baseline-XX.txt`
+
+### 3. Test-Driven Development (MANDATORY)
+
+You MUST write tests BEFORE implementation:
+
+a. **Write failing tests first** based on the plan's acceptance criteria
    - Tests should fail initially (proving feature isn't implemented)
-   - If direction changes, update tests to match new requirements
-   - Never modify tests just to make them pass
+   - Cover happy path, edge cases, and error handling
 
-d. **Verify**: Use `/dev-server start` and browser integration to test the app works
-
-### 3. Pre-Handoff Review (MANDATORY before any commit)
-
-a. **Test**: Run full test suite, compare with baseline for regressions
-
-b. **Manual Check**: Use browser integration to verify requirements are met, then `/dev-server stop`
-
-c. **MANDATORY - Handoff to PM**: When implementation complete, you MUST hand off to PM (who coordinates all quality gates):
+b. **Run tests to confirm they fail:**
    ```bash
-   send-msg $AGENT_ID pm HANDOFF "Story #42 implementation complete. Changed files: file1.ts, file2.ts. Test focus: edge cases X and Y. How to test: Navigate to /path and verify behavior."
+   bun test:run src/__tests__/unit/your-new-tests.test.ts
    ```
-   **After sending this message, your turn is complete.** PM will route to QA and coordinate the review pipeline.
 
-### 4. Quality Gates (PM coordinates)
+c. **Then implement** the feature to make tests pass
 
-PM coordinates all quality gates. You may receive:
-- `BLOCK` from PM (relaying QA/UI-UX/Code Auditor feedback): Fix issues, re-run tests, send new `HANDOFF` to PM
-- `GO_AHEAD` from PM: Proceed to commit (after human approval)
+d. **If requirements change**, update tests FIRST, then update implementation
 
-### 7. Human Checkpoint
+**NEVER write implementation code before you have failing tests for that functionality.**
+If QA blocks you for missing test coverage, you have violated this workflow.
 
-PM will ask human for final approval. **Wait for PM's `GO_AHEAD` message before proceeding.**
+### 4. Implementation
 
-### 8. Commit the Changes (ONLY after receiving GO_AHEAD from PM)
+Now implement the feature following the plan:
+- Make incremental changes
+- Run tests frequently: `bun test:run`
+- Commit logical chunks (optional WIP commits on feature branch)
 
-a. **Lint**: Run `bun run lint:fix` (or project's lint command), commit any fixes
+### 5. Pre-Handoff Verification (REQUIRED)
 
-b. **Docs**: Update documentation if needed:
-   - README.md for setup/usage/architecture changes
-   - FEATURES.md for feature changes
+Before handing off to PM, you MUST complete ALL of these:
 
-c. **Commit**: Use `/smart-commit` skill
+```bash
+# a. Run full test suite and compare to baseline
+bun test:run > /tmp/results-XX.txt
+diff /tmp/baseline-XX.txt /tmp/results-XX.txt  # Should only show NEW tests
 
-d. **Merge options**: PM will coordinate with human on PR vs direct merge
+# b. Run linter
+bun run lint
 
-e. **Clean merge**: Squash WIP commits, rebase on main, resolve conflicts
+# c. Verify build passes
+bun run build
+```
 
-f. **Complete**: Use `/worktree merge` to merge to main
+d. **Manual browser verification (REQUIRED):**
+   ```bash
+   /dev-server start
+   # Actually USE the feature in the browser
+   # Verify it works as expected
+   # Check for console errors
+   /dev-server stop
+   ```
+
+**CHECKPOINT**: Do not hand off until you have:
+- [ ] All tests passing (no regressions from baseline)
+- [ ] Lint passing
+- [ ] Build passing
+- [ ] Manually verified feature works in browser
+
+### 6. Handoff to PM
+
+Only after completing all checkpoints:
+
+```bash
+send-msg $AGENT_ID pm HANDOFF "Story #XX implementation complete.
+Changed files: [list files].
+Test focus: [edge cases to verify].
+How to test: [steps for QA]."
+```
+
+**After sending HANDOFF, STOP.** Wait for PM to coordinate quality gates.
+Do NOT ask the user to commit or merge. Do NOT proceed without PM's response.
+
+### 7. Address Feedback
+
+You may receive:
+- `BLOCK` from PM: Fix issues, re-run verification, send new HANDOFF
+- `GO_AHEAD` from PM: Proceed to commit (only after human approval)
+
+### 8. Commit and Merge (ONLY after GO_AHEAD)
+
+**CRITICAL: You MUST use the `/smart-commit` skill for ALL commits.** Do not use raw `git commit` commands.
+
+```bash
+# a. Fix any lint issues
+bun run lint:fix && git add -A
+
+# b. Create commits using the smart-commit skill (MANDATORY)
+/smart-commit
+
+# c. Merge to main via worktree command
+/worktree merge
+```
+
+**NEVER commit directly to main.** NEVER push to main without going through worktree merge.
+**NEVER use raw `git commit`** - always use `/smart-commit` which creates logical, atomic commits.
 
 ### 9. Cleanup
 
-a. Remove temp files (baseline results, etc.)
+```bash
+# a. Sync agents back to main
+sync-workspace engineer remove /path/to/original/project
 
-b. **Sync workspace** back to main:
-   ```bash
-   sync-workspace engineer remove /original/project/dir
-   ```
-   This automatically runs `cd` on all agents to switch back to the main project directory.
+# b. Delete temp files
+rm /tmp/baseline-XX.txt /tmp/results-XX.txt
 
-c. Send final status:
-   ```bash
-   send-msg $AGENT_ID pm STATUS_UPDATE "Story #42 complete. Implemented auth flow with OAuth2 PKCE. All tests passing. Ready for QA."
-   ```
+# c. Report completion
+send-msg $AGENT_ID pm STATUS_UPDATE "Story #XX complete. Merged to main."
+```
+
+---
+
+## Workflow Violations
+
+If you find yourself in any of these situations, STOP and correct course:
+
+| Situation | Problem | Fix |
+|-----------|---------|-----|
+| Writing code on main | No isolation | Create worktree, move changes |
+| Writing implementation before tests | Not TDD | Stop, write tests first |
+| Handing off without manual test | Unverified | Start dev server, test manually |
+| Committing without GO_AHEAD | Skipped approval | Wait for PM |
+| Using raw `git commit` | Skipped smart-commit | Use `/smart-commit` instead |
+| Pushing directly to main | Bypassed merge | Use `/worktree merge` |
 
 ## Coordinating with Other Engineers
 
