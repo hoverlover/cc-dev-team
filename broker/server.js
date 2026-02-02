@@ -909,7 +909,9 @@ io.on('connection', (socket) => {
   socket.on('disconnect', (reason) => {
     if (!isTransient) {
       session.agents.delete(agentRole)
-      session.outputBuffers.delete(agentRole)
+      // Preserve output buffer for reconnection (e.g., after system sleep)
+      // Buffer is cleaned up when: session ends, agent explicitly removed, or new session starts
+      // Memory is bounded by MAX_OUTPUT_BUFFER per agent
       io.to(`session:${session.id}:dashboard`).emit('agent_left', {
         sessionId: session.id,
         role: agentRole,
