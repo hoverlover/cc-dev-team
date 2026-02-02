@@ -21,42 +21,87 @@
   padding: 0;
 }
 
+/* ===== Linear-Inspired Design Tokens ===== */
 :root {
-  --bg-primary: #1a1a2e;
-  --bg-secondary: #16213e;
-  --bg-tertiary: #0f3460;
-  --text-primary: #eee;
-  --text-secondary: #aaa;
-  --accent: #e94560;
-  --accent-secondary: #00d9ff;
-  --success: #4ade80;
-  --warning: #facc15;
-  --error: #f87171;
+  /* Backgrounds - muted dark grays (not pure black) */
+  --bg-primary: #161618;
+  --bg-secondary: #1c1c1f;
+  --bg-tertiary: #242428;
+  --bg-hover: #2c2c31;
+  --bg-active: #35353b;
+
+  /* Text */
+  --text-primary: #ececef;
+  --text-secondary: #a0a0a8;
+  --text-muted: #6e6e78;
+
+  /* Accent - violet (Linear-style) */
+  --accent: #8b5cf6;
+  --accent-hover: #7c3aed;
+  --accent-muted: rgba(139, 92, 246, 0.15);
+
+  /* Status colors */
+  --success: #22c55e;
+  --success-muted: rgba(34, 197, 94, 0.15);
+  --warning: #eab308;
+  --warning-muted: rgba(234, 179, 8, 0.15);
+  --error: #ef4444;
+  --error-muted: rgba(239, 68, 68, 0.15);
+
+  /* Borders - very subtle */
+  --border-subtle: rgba(255, 255, 255, 0.06);
+  --border-default: rgba(255, 255, 255, 0.1);
+
+  /* Shadows */
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
+  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.4);
+  --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.5);
+
+  /* Radius - consistent */
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 8px;
+
+  /* Transitions */
+  --transition-fast: 150ms ease;
+  --transition-normal: 200ms ease;
+
+  /* Agent colors */
+  --agent-pm: #f59e0b;
+  --agent-architect: #8b5cf6;
+  --agent-engineer: #10b981;
+  --agent-qa: #06b6d4;
+  --agent-code-auditor: #ec4899;
+  --agent-ui-ux: #f472b6;
 }
 
+
 body {
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+  font-family: var(--font-inter), 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
   background: var(--bg-primary);
   color: var(--text-primary);
   height: 100vh;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
-/* Scrollbar styling */
+/* Refined scrollbar - thinner and more subtle */
 ::-webkit-scrollbar {
-  width: 8px;
+  width: 6px;
+  height: 6px;
 }
 
 ::-webkit-scrollbar-track {
-  background: var(--bg-primary);
+  background: transparent;
 }
 
 ::-webkit-scrollbar-thumb {
-  background: var(--bg-tertiary);
-  border-radius: 4px;
+  background: var(--bg-hover);
+  border-radius: 3px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #1a4a7a;
+  background: var(--bg-active);
 }
 
 /* Hide xterm.js cursor - Claude Code renders its own cursor */
@@ -65,4 +110,15 @@ body {
   display: none !important;
   visibility: hidden !important;
   opacity: 0 !important;
+}
+
+/* Focus visible outline for accessibility */
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }

@@ -24,6 +24,31 @@ interface XTerminalProps {
   forwardedRef?: React.Ref<XTerminalHandle> // For dynamic import compatibility
 }
 
+// Terminal theme - lighter muted dark for visual separation
+const terminalTheme = {
+  background: '#28282e',
+  foreground: '#e4e4e8',
+  cursor: 'transparent',
+  cursorAccent: 'transparent',
+  selectionBackground: 'rgba(139, 92, 246, 0.35)',
+  black: '#28282e',
+  red: '#f87171',
+  green: '#4ade80',
+  yellow: '#fbbf24',
+  blue: '#60a5fa',
+  magenta: '#a78bfa',
+  cyan: '#22d3ee',
+  white: '#e4e4e8',
+  brightBlack: '#78788a',
+  brightRed: '#fca5a5',
+  brightGreen: '#86efac',
+  brightYellow: '#fcd34d',
+  brightBlue: '#93c5fd',
+  brightMagenta: '#c4b5fd',
+  brightCyan: '#67e8f9',
+  brightWhite: '#ffffff',
+}
+
 const XTerminal = forwardRef<XTerminalHandle, XTerminalProps>(({ className, onData, onReady, forwardedRef }, ref) => {
   // Use forwardedRef if provided (from dynamic import wrapper), otherwise use ref
   const actualRef = forwardedRef || ref
@@ -101,30 +126,7 @@ const XTerminal = forwardRef<XTerminalHandle, XTerminalProps>(({ className, onDa
       // JetBrainsMono Nerd Font is loaded via CSS @font-face from CDN
       // Local Nerd Fonts are tried first for faster loading if available
       fontFamily: '"MesloLGS Nerd Font", "MesloLGS NF", "JetBrainsMono Nerd Font", "FiraCode Nerd Font", "Hack Nerd Font", Menlo, Monaco, "Courier New", monospace',
-      theme: {
-        background: '#1a1a2e',
-        foreground: '#e0e0e0',
-        // Make cursor invisible - Claude Code renders its own
-        cursor: 'transparent',
-        cursorAccent: 'transparent',
-        selectionBackground: '#3d5a80',
-        black: '#1a1a2e',
-        red: '#ff6b6b',
-        green: '#a8e6cf',
-        yellow: '#ffd93d',
-        blue: '#6bcbff',
-        magenta: '#c792ea',
-        cyan: '#89ddff',
-        white: '#e0e0e0',
-        brightBlack: '#4a4a6a',
-        brightRed: '#ff8a8a',
-        brightGreen: '#b8f6df',
-        brightYellow: '#ffe66d',
-        brightBlue: '#8bdbff',
-        brightMagenta: '#d7a2fa',
-        brightCyan: '#99edff',
-        brightWhite: '#ffffff',
-      },
+      theme: terminalTheme,
     })
 
     // Add web links addon for clickable URLs

@@ -151,6 +151,7 @@ export default function Dashboard() {
     selectedAgentRef.current = state?.selectedAgent || null
   }, [activeSessionId, sessionStates])
 
+  
   // Unsubscribe from agent output when switching away from nodes view
   // This ensures the buffer is replayed when switching back
   useEffect(() => {
@@ -746,7 +747,7 @@ export default function Dashboard() {
               Messages
             </button>
           </div>
-          <span className={`${styles.connectionStatus} ${connected ? styles.connected : styles.disconnected}`}>
+                    <span className={`${styles.connectionStatus} ${connected ? styles.connected : styles.disconnected}`}>
             {connected ? 'Connected' : 'Disconnected'}
           </span>
         </div>
