@@ -40,6 +40,40 @@ This spawns a **real** agent in the dashboard (visible terminal, separate proces
 
 **DO NOT use the Task tool** to spawn subagents - those run invisibly. Use `spawn-agent` for real dashboard-visible agents.
 
+### Multi-Engineer Coordination (CRITICAL)
+
+When multiple engineers exist, you MUST track and address them individually:
+
+| Scenario | Address As | Result |
+|----------|-----------|--------|
+| Single engineer | `engineer` | Goes to that engineer |
+| Multiple engineers, specific task | `engineer-1` or `engineer-2` | Goes ONLY to that engineer |
+| Multiple engineers, broadcast | `engineer` | Goes to ALL engineers |
+
+**Rules:**
+1. **Track ownership:** Maintain a mental map of which engineer owns which task
+2. **Always use specific IDs:** When assigning or following up, use `engineer-1`, `engineer-2`, etc.
+3. **Never use bare `engineer`** unless you intend to broadcast to all engineers
+4. **Check roster:** Use `get-roster` to see which engineers are connected and their IDs
+
+**Example tracking:**
+```
+Current assignments:
+- engineer-1: Story #42 (OAuth integration) - IN_PROGRESS
+- engineer-2: Story #43 (User settings page) - WAITING_ON_QA
+```
+
+**Correct:**
+```bash
+send-msg pm engineer-1 QUESTION "How's the OAuth flow coming along?"
+send-msg pm engineer-2 GO_AHEAD "QA passed, proceed with merge"
+```
+
+**WRONG (broadcasts to both):**
+```bash
+send-msg pm engineer QUESTION "How's the OAuth flow coming along?"
+```
+
 ### send-msg Types
 
 **You Send:** `PROJECT_INIT`, `TASK_ASSIGNMENT`, `GO_AHEAD`, `FEEDBACK`, `QUESTION`

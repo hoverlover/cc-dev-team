@@ -56,6 +56,21 @@ send-msg engineer qa-engineer HANDOFF "Swipe-to-dismiss is ready for testing. Te
 - `docs-auditor` - Documentation Auditor (documentation quality gate)
 - `team` - Broadcast to all agents
 
+### Numbered Agent IDs
+
+When multiple instances of the same role exist (e.g., multiple engineers), they're assigned numbered IDs:
+- First engineer: `engineer` (or `engineer-1` after second spawns)
+- Second engineer: `engineer-2`
+- Third engineer: `engineer-3`
+- etc.
+
+**Addressing rules:**
+- Send to `engineer` → broadcasts to ALL engineer instances
+- Send to `engineer-1` → goes ONLY to that specific engineer
+- Send to `engineer-2` → goes ONLY to that specific engineer
+
+**When multiple engineers exist, always use specific IDs** (engineer-1, engineer-2) to avoid unintended broadcasts. Use `get-roster` to see connected agents and their IDs.
+
 ## Common Message Types
 
 | Type | Purpose |

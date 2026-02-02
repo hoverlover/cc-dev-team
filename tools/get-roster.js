@@ -31,13 +31,17 @@ socket.on('connect', () => {
       console.log('\nNo agents currently connected.')
     } else {
       for (const agent of roster) {
+        // Get icon based on base role (handle numbered agents like engineer-1)
+        const baseRole = agent.replace(/-\d+$/, '')
         const icon = {
           'pm': '👔',
           'architect': '🏗️',
-          'engineer-1': '⚙️',
-          'engineer-2': '⚙️',
-          'qa': '🧪'
-        }[agent] || '🤖'
+          'engineer': '⚙️',
+          'qa-engineer': '🧪',
+          'ui-ux': '🎨',
+          'code-auditor': '🔍',
+          'docs-auditor': '📝'
+        }[baseRole] || '🤖'
 
         console.log(`  ${icon}  ${agent}`)
       }

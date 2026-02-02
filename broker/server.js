@@ -148,30 +148,67 @@ function listDirectory(dirPath) {
 // AGENT SPAWNING
 // ============================================================================
 
+// Roles that support multiple instances (auto-numbered as engineer-1, engineer-2, etc.)
+const MULTI_INSTANCE_ROLES = ['engineer']
+
+/**
+ * Get the next available instance ID for a multi-instance role.
+ * Finds gaps first (e.g., if 1 and 3 exist, returns 2).
+ */
+function getNextInstanceId(session, baseRole) {
+  const pattern = new RegExp(`^${baseRole}-(\\d+)$`)
+  const usedIds = []
+
+  for (const existingRole of session.processes.keys()) {
+    const match = existingRole.match(pattern)
+    if (match) {
+      usedIds.push(parseInt(match[1], 10))
+    }
+  }
+
+  if (usedIds.length === 0) return 1
+
+  usedIds.sort((a, b) => a - b)
+
+  // Find first gap
+  for (let i = 0; i < usedIds.length; i++) {
+    if (usedIds[i] !== i + 1) {
+      return i + 1
+    }
+  }
+
+  return usedIds[usedIds.length - 1] + 1
+}
+
 function spawnAgent(session, role) {
-  if (session.processes.has(role)) {
-    console.log(`[Broker] Agent ${role} already running in session ${session.id}`)
+  // Auto-number multi-instance roles (engineer -> engineer-1, engineer-2, etc.)
+  let actualRole = role
+  if (MULTI_INSTANCE_ROLES.includes(role)) {
+    const nextId = getNextInstanceId(session, role)
+    actualRole = `${role}-${nextId}`
+    console.log(`[Broker] Auto-assigned ID: ${role} -> ${actualRole}`)
+  }
+
+  if (session.processes.has(actualRole)) {
+    console.log(`[Broker] Agent ${actualRole} already running in session ${session.id}`)
     return { success: false, error: 'Agent already running' }
   }
 
   const wrapperPath = join(TOOLS_DIR, 'claude-wrapper.js')
 
   // Determine the agent's config directory (where system-prompt.md and .claude/settings.json live)
-  let agentConfigDir = join(AGENTS_DIR, role)
+  // For numbered roles like engineer-1, use the base role directory (engineer)
+  const baseRole = actualRole.match(/^(.+)-\d+$/)?.[1] || actualRole
+  let agentConfigDir = join(AGENTS_DIR, baseRole)
   if (!existsSync(agentConfigDir)) {
-    // Engineer instances (engineer-1, engineer-2, etc.) use the generic engineer directory
-    if (role.startsWith('engineer-')) {
-      agentConfigDir = join(AGENTS_DIR, 'engineer')
-    } else {
-      agentConfigDir = null
-    }
+    agentConfigDir = null
   }
 
   // Build paths for agent config files
   const agentSystemPrompt = agentConfigDir ? join(agentConfigDir, 'system-prompt.md') : null
   const agentSettings = agentConfigDir ? join(agentConfigDir, '.claude', 'settings.json') : null
 
-  console.log(`[Broker] Spawning ${role} in ${session.projectDir} for session ${session.id}`)
+  console.log(`[Broker] Spawning ${actualRole} in ${session.projectDir} for session ${session.id}`)
   if (agentSystemPrompt && existsSync(agentSystemPrompt)) {
     console.log(`[Broker] Agent system prompt: ${agentSystemPrompt}`)
   }
@@ -183,7 +220,7 @@ function spawnAgent(session, role) {
     cwd: session.projectDir,
     env: {
       ...process.env,
-      AGENT_ROLE: role,
+      AGENT_ROLE: actualRole,
       BROKER_URL: `http://localhost:${PORT}`,
       SESSION_ID: session.id,
       PROJECT_DIR: session.projectDir,
@@ -196,34 +233,34 @@ function spawnAgent(session, role) {
     stdio: ['pipe', 'pipe', 'pipe']
   })
 
-  session.processes.set(role, proc)
+  session.processes.set(actualRole, proc)
 
   proc.stdout.on('data', (data) => {
-    console.log(`[${role}:stdout] ${data.toString().trim()}`)
+    console.log(`[${actualRole}:stdout] ${data.toString().trim()}`)
   })
 
   proc.stderr.on('data', (data) => {
-    console.error(`[${role}:stderr] ${data.toString().trim()}`)
+    console.error(`[${actualRole}:stderr] ${data.toString().trim()}`)
   })
 
   proc.on('exit', (code, signal) => {
-    console.log(`[Broker] Agent ${role} exited with code ${code}, signal ${signal}`)
-    session.processes.delete(role)
+    console.log(`[Broker] Agent ${actualRole} exited with code ${code}, signal ${signal}`)
+    session.processes.delete(actualRole)
 
     // Notify dashboard that agent left
-    const agent = session.agents.get(role)
+    const agent = session.agents.get(actualRole)
     if (agent) {
-      session.agents.delete(role)
-      session.outputBuffers.delete(role)
+      session.agents.delete(actualRole)
+      session.outputBuffers.delete(actualRole)
       io.to(`session:${session.id}:dashboard`).emit('agent_left', {
         sessionId: session.id,
-        role,
+        role: actualRole,
         timestamp: new Date().toISOString()
       })
     }
   })
 
-  return { success: true, role, sessionId: session.id }
+  return { success: true, role: actualRole, sessionId: session.id }
 }
 
 function stopAgent(session, role) {
