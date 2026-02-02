@@ -893,9 +893,23 @@ function formatMessageForInjection(msg) {
 
 function checkAndInject() {
   const timeSinceLastInject = Date.now() - lastInjected
-  if (timeSinceLastInject < COOLDOWN_MS) return
+  const timeSinceLastKeystroke = Date.now() - tracker.lastKeystroke
+  const state = stateMachine?.state || 'unknown'
+
+  // Debug: log injection check status when there are pending messages
+  if (messageQueue.length > 0) {
+    debug(`Inject check: queue=${messageQueue.length}, cooldown=${timeSinceLastInject}ms/${COOLDOWN_MS}ms, keystroke=${timeSinceLastKeystroke}ms/${IDLE_TIMEOUT_MS}ms, inputBuf=${tracker.buffer.length}, state=${state}`)
+  }
+
+  if (timeSinceLastInject < COOLDOWN_MS) {
+    if (messageQueue.length > 0) debug(`Skipping inject - cooldown (${COOLDOWN_MS - timeSinceLastInject}ms remaining)`)
+    return
+  }
   if (messageQueue.length === 0) return
-  if (!tracker.canInject(IDLE_TIMEOUT_MS)) return
+  if (!tracker.canInject(IDLE_TIMEOUT_MS)) {
+    debug(`Skipping inject - canInject=false (inputBuf=${tracker.buffer.length}, keystroke=${timeSinceLastKeystroke}ms ago)`)
+    return
+  }
 
   // Don't inject while agent is actively streaming with extended thinking -
   // causes API error ("thinking blocks cannot be modified").
