@@ -30,9 +30,9 @@ Create a new worktree for the specified branch.
    - Example: `supplier-automation` → `sa`, `my-cool-project` → `mcp`
 4. Pick a random adjective from: fuzzy, grumpy, sleepy, sneaky, spicy, wobbly, dizzy, bouncy, cranky, peppy
 5. Pick a random animal from: otter, walrus, falcon, badger, koala, panda, squid, gecko, ferret, moose
-6. Set worktree path: `~/.cc-dev-team/worktrees/<prefix>-<adjective>-<animal>`
-   - Example: `~/.cc-dev-team/worktrees/sa-grumpy-walrus`
-   - Create the `~/.cc-dev-team/worktrees` directory if it doesn't exist
+6. Set worktree path: `$HOME/.cc-dev-team/worktrees/<repo-name>/<prefix>-<adjective>-<animal>`
+   - Example: `$HOME/.cc-dev-team/worktrees/supplier-automation/sa-grumpy-walrus`
+   - Create the directory with `mkdir -p` if it doesn't exist
 7. Check if target directory exists - if so, inform user and stop
 8. Check if branch exists with `git show-ref --verify refs/heads/<branch>`
    - If exists: `git worktree add <path> <branch>`
