@@ -7,7 +7,7 @@
     "dev": "./start-orchestrator.sh --dev",
     "start": "./start-orchestrator.sh",
     "broker": "node broker/server.js",
-    "//broker": "Uses node instead of bun because better-sqlite3 native module is not supported in Bun",
+    "//broker": "Uses node:sqlite (Node 22+) for SQLite persistence",
     "dashboard": "cd dashboard && bun run dev",
     "release": "./scripts/release.sh",
     "test": "vitest",
@@ -17,7 +17,6 @@
   },
   "dependencies": {
     "@lydell/node-pty-darwin-arm64": "^1.2.0-beta.7",
-    "better-sqlite3": "^11.0.0",
     "node-pty": "^1.1.0",
     "socket.io": "^4.7.4",
     "socket.io-client": "^4.7.4"

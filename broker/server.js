@@ -1,6 +1,6 @@
 import { Server } from 'socket.io'
 import { createServer } from 'http'
-import Database from 'better-sqlite3'
+import { DatabaseSync } from 'node:sqlite'
 import { mkdirSync, readdirSync, statSync, existsSync, writeFileSync } from 'fs'
 import { dirname, join, basename, resolve } from 'path'
 import { fileURLToPath } from 'url'
@@ -22,7 +22,7 @@ mkdirSync(DATA_DIR, { recursive: true })
 mkdirSync(UPLOADS_DIR, { recursive: true })
 
 // Initialize SQLite database for message persistence
-const db = new Database(join(DATA_DIR, 'messages.db'))
+const db = new DatabaseSync(join(DATA_DIR, 'messages.db'))
 db.exec(`
   CREATE TABLE IF NOT EXISTS messages (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
