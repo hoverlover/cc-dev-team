@@ -7,6 +7,7 @@ import { fileURLToPath } from 'url'
 import { spawn } from 'child_process'
 import { randomUUID } from 'crypto'
 import { homedir } from 'os'
+import { getNextInstanceId } from './lib/getNextInstanceId.js'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const ORCHESTRATOR_DIR = join(__dirname, '..')
@@ -151,40 +152,13 @@ function listDirectory(dirPath) {
 // Roles that support multiple instances (auto-numbered as engineer-1, engineer-2, etc.)
 const MULTI_INSTANCE_ROLES = ['engineer']
 
-/**
- * Get the next available instance ID for a multi-instance role.
- * Finds gaps first (e.g., if 1 and 3 exist, returns 2).
- */
-function getNextInstanceId(session, baseRole) {
-  const pattern = new RegExp(`^${baseRole}-(\\d+)$`)
-  const usedIds = []
-
-  for (const existingRole of session.processes.keys()) {
-    const match = existingRole.match(pattern)
-    if (match) {
-      usedIds.push(parseInt(match[1], 10))
-    }
-  }
-
-  if (usedIds.length === 0) return 1
-
-  usedIds.sort((a, b) => a - b)
-
-  // Find first gap
-  for (let i = 0; i < usedIds.length; i++) {
-    if (usedIds[i] !== i + 1) {
-      return i + 1
-    }
-  }
-
-  return usedIds[usedIds.length - 1] + 1
-}
+// getNextInstanceId imported from ./lib/getNextInstanceId.js
 
 function spawnAgent(session, role) {
   // Auto-number multi-instance roles (engineer -> engineer-1, engineer-2, etc.)
   let actualRole = role
   if (MULTI_INSTANCE_ROLES.includes(role)) {
-    const nextId = getNextInstanceId(session, role)
+    const nextId = getNextInstanceId(session.processes, role)
     actualRole = `${role}-${nextId}`
     console.log(`[Broker] Auto-assigned ID: ${role} -> ${actualRole}`)
   }
