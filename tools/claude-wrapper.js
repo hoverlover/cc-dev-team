@@ -113,6 +113,8 @@ const messageQueue = []
 
 // Track messages pending read confirmation (waiting for echo in terminal output)
 const pendingReadConfirmation = []
+const INJECTED_MESSAGE_MARKER = 'NEW TEAM MESSAGE'
+let suppressInjectedLine = false
 
 // Configuration via environment variables
 const STATUS_IDLE_TIMEOUT_MS = parseInt(process.env.STATUS_IDLE_TIMEOUT_MS) || 8000
@@ -463,10 +465,13 @@ ptyProcess.onData((data) => {
   }
 
   // Accumulate output in ring buffer for status detection
-  outputBuffer.append(data)
+  const dataForBuffer = stripInjectedOutput(data)
+  if (dataForBuffer) {
+    outputBuffer.append(dataForBuffer)
+  }
 
   // Check if we see our injected message echoed back - confirms delivery
-  if (data.includes('NEW TEAM MESSAGE') && pendingReadConfirmation.length > 0) {
+  if (data.includes(INJECTED_MESSAGE_MARKER) && pendingReadConfirmation.length > 0) {
     debug('Detected message echo in output - confirming delivery')
     // Mark all pending as confirmed (they were displayed)
     for (const pending of pendingReadConfirmation) {
@@ -482,7 +487,7 @@ ptyProcess.onData((data) => {
     socket.emit('agent_output', { data })
 
     // Detect state transitions using buffered output
-    if (stateMachine) {
+    if (stateMachine && dataForBuffer) {
       detectStateTransition(outputBuffer, stateMachine)
     }
   }
@@ -610,6 +615,34 @@ function formatMessageForInjection(msg) {
   // Clean up for single-line injection
   content = String(content).replace(/\n/g, ' ').replace(/\r/g, '')
   return `[MESSAGE from ${msg.from_agent}] [${msg.message_type}]: ${content}`
+}
+
+function stripInjectedOutput(data) {
+  // Remove injected message line(s) from the state-detection buffer to avoid
+  // false positives on tool/prompt patterns.
+  if (data.includes(INJECTED_MESSAGE_MARKER)) {
+    const markerIndex = data.indexOf(INJECTED_MESSAGE_MARKER)
+    const before = data.slice(0, markerIndex)
+    const afterMarker = data.slice(markerIndex)
+    const lineEndIndex = afterMarker.search(/[\r\n]/)
+    if (lineEndIndex === -1) {
+      suppressInjectedLine = true
+      return before
+    }
+    suppressInjectedLine = false
+    return before + afterMarker.slice(lineEndIndex)
+  }
+
+  if (suppressInjectedLine) {
+    const lineEndIndex = data.search(/[\r\n]/)
+    if (lineEndIndex === -1) {
+      return ''
+    }
+    suppressInjectedLine = false
+    return data.slice(lineEndIndex)
+  }
+
+  return data
 }
 
 function checkAndInject() {
