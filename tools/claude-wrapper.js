@@ -663,6 +663,10 @@ function checkAndInject() {
     return
   }
   if (messageQueue.length === 0) return
+  if (!initialLoadComplete) {
+    debug('Skipping inject - initial load not complete')
+    return
+  }
   if (!tracker.canInject(IDLE_TIMEOUT_MS)) {
     debug(`Skipping inject - canInject=false (inputBuf=${tracker.buffer.length}, keystroke=${timeSinceLastKeystroke}ms ago)`)
     return
