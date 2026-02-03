@@ -136,6 +136,7 @@ export default function Dashboard() {
   const [showProjectPicker, setShowProjectPicker] = useState(false)
   const [showAddAgent, setShowAddAgent] = useState(false)
   const [agentsToAdd, setAgentsToAdd] = useState<Set<string>>(new Set())
+  const [terminalSize, setTerminalSize] = useState({ cols: 80, rows: 24 })
 
   const socketRef = useRef<Socket | null>(null)
   const xtermRef = useRef<XTerminalHandle | null>(null)
@@ -190,6 +191,19 @@ export default function Dashboard() {
       socketRef.current.emit('subscribe_output', {
         sessionId: activeSessionIdRef.current,
         agent: selectedAgentRef.current
+      })
+    }
+  }, [])
+
+  // Handle terminal resize - notify backend of new size
+  const handleTerminalResize = useCallback((cols: number, rows: number) => {
+    setTerminalSize({ cols, rows })
+    if (socketRef.current && selectedAgentRef.current && activeSessionIdRef.current) {
+      socketRef.current.emit('terminal_resize', {
+        sessionId: activeSessionIdRef.current,
+        agent: selectedAgentRef.current,
+        cols,
+        rows
       })
     }
   }, [])
@@ -937,7 +951,7 @@ export default function Dashboard() {
                       )}
                     </span>
                     <div className={styles.terminalActions}>
-                      <span className={styles.terminalSize}>120x40</span>
+                      <span className={styles.terminalSize}>{terminalSize.cols}x{terminalSize.rows}</span>
                       <button
                         className={styles.terminalClose}
                         onClick={() => {
@@ -965,6 +979,7 @@ export default function Dashboard() {
                       className={styles.terminal}
                       onData={handleTerminalData}
                       onReady={handleTerminalReady}
+                      onResize={handleTerminalResize}
                     />
                   </div>
                 </>

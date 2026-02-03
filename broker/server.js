@@ -465,6 +465,22 @@ io.on('connection', (socket) => {
       }
     })
 
+    // ---- Terminal Resize (for dynamic terminal sizing) ----
+
+    socket.on('terminal_resize', ({ sessionId, agent, cols, rows }) => {
+      const session = getSession(sessionId)
+      if (!session) return
+
+      const agentInfo = session.agents.get(agent)
+      if (agentInfo && agentInfo.socketId) {
+        // Update stored terminal size
+        agentInfo.terminalSize = { cols, rows }
+        // Forward resize event to wrapper
+        io.to(agentInfo.socketId).emit('terminal_resize', { cols, rows })
+        console.log(`[Broker] Terminal resize for ${agent}: ${cols}x${rows}`)
+      }
+    })
+
     // ---- File Upload ----
 
     socket.on('upload_file', ({ sessionId, filename, data, mimeType }, callback) => {

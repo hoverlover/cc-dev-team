@@ -501,6 +501,12 @@ if (headless) {
       stateMachine.transition('thinking', 'Processing input...')
     }
   })
+
+  // Headless mode: handle terminal resize from dashboard
+  socket.on('terminal_resize', ({ cols, rows }) => {
+    debug(`Terminal resize: ${cols}x${rows}`)
+    ptyProcess.resize(cols, rows)
+  })
 } else {
   // Interactive mode: read from local stdin
   if (process.stdin.isTTY) {

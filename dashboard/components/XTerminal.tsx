@@ -2,12 +2,13 @@
 
 import React, { useEffect, useRef, useImperativeHandle, forwardRef, useState } from 'react'
 import { Terminal } from '@xterm/xterm'
+import { FitAddon } from '@xterm/addon-fit'
 import { WebLinksAddon } from '@xterm/addon-web-links'
 // Note: xterm.css is imported in page.tsx to avoid CSS chunk loading issues with dynamic imports
 
-// Fixed terminal size to match headless mode
-const FIXED_COLS = 120
-const FIXED_ROWS = 40
+// Minimum terminal size (scrollbars if container is smaller)
+const MIN_COLS = 80
+const MIN_ROWS = 24
 
 export interface XTerminalHandle {
   write: (data: string) => void
@@ -21,6 +22,7 @@ interface XTerminalProps {
   className?: string
   onData?: (data: string) => void // Callback for keyboard input
   onReady?: () => void // Callback when terminal is ready to receive data
+  onResize?: (cols: number, rows: number) => void // Callback when terminal is resized
   forwardedRef?: React.Ref<XTerminalHandle> // For dynamic import compatibility
 }
 
@@ -49,11 +51,12 @@ const terminalTheme = {
   brightWhite: '#ffffff',
 }
 
-const XTerminal = forwardRef<XTerminalHandle, XTerminalProps>(({ className, onData, onReady, forwardedRef }, ref) => {
+const XTerminal = forwardRef<XTerminalHandle, XTerminalProps>(({ className, onData, onReady, onResize, forwardedRef }, ref) => {
   // Use forwardedRef if provided (from dynamic import wrapper), otherwise use ref
   const actualRef = forwardedRef || ref
   const containerRef = useRef<HTMLDivElement>(null)
   const terminalRef = useRef<Terminal | null>(null)
+  const fitAddonRef = useRef<FitAddon | null>(null)
   const [isReady, setIsReady] = useState(false)
   // Track whether we're pinned to bottom (starts pinned)
   const pinnedToBottomRef = useRef(true)
@@ -111,10 +114,8 @@ const XTerminal = forwardRef<XTerminalHandle, XTerminalProps>(({ className, onDa
   useEffect(() => {
     if (!containerRef.current) return
 
-    // Create terminal with FIXED size to match headless PTY
+    // Create terminal - FitAddon will set actual size based on container
     const terminal = new Terminal({
-      cols: FIXED_COLS,
-      rows: FIXED_ROWS,
       // Hide xterm's cursor - Claude Code renders its own cursor
       cursorBlink: false,
       cursorStyle: 'bar',
@@ -129,6 +130,11 @@ const XTerminal = forwardRef<XTerminalHandle, XTerminalProps>(({ className, onDa
       theme: terminalTheme,
     })
 
+    // Add FitAddon for dynamic resizing
+    const fitAddon = new FitAddon()
+    terminal.loadAddon(fitAddon)
+    fitAddonRef.current = fitAddon
+
     // Add web links addon for clickable URLs
     const webLinksAddon = new WebLinksAddon()
     terminal.loadAddon(webLinksAddon)
@@ -136,7 +142,52 @@ const XTerminal = forwardRef<XTerminalHandle, XTerminalProps>(({ className, onDa
     // Open terminal in container
     terminal.open(containerRef.current)
     terminalRef.current = terminal
+
+    // Initial fit after opening (fit to container size)
+    fitAddon.fit()
+
+    // Enforce minimum size
+    const cols = Math.max(terminal.cols, MIN_COLS)
+    const rows = Math.max(terminal.rows, MIN_ROWS)
+    if (terminal.cols !== cols || terminal.rows !== rows) {
+      terminal.resize(cols, rows)
+    }
+
+    // Notify parent of initial size
+    if (onResize) {
+      onResize(terminal.cols, terminal.rows)
+    }
+
     setIsReady(true)
+
+    // Debounced resize handler
+    let resizeTimeout: NodeJS.Timeout | null = null
+    const handleResize = () => {
+      if (resizeTimeout) {
+        clearTimeout(resizeTimeout)
+      }
+      resizeTimeout = setTimeout(() => {
+        if (fitAddonRef.current && terminalRef.current) {
+          fitAddonRef.current.fit()
+          const t = terminalRef.current
+          // Enforce minimum size
+          const newCols = Math.max(t.cols, MIN_COLS)
+          const newRows = Math.max(t.rows, MIN_ROWS)
+          if (t.cols !== newCols || t.rows !== newRows) {
+            t.resize(newCols, newRows)
+          }
+          // Notify parent of new size
+          if (onResize) {
+            onResize(t.cols, t.rows)
+          }
+          console.log(`[XTerminal] Resized to ${t.cols}x${t.rows}`)
+        }
+      }, 100) // 100ms debounce
+    }
+
+    // ResizeObserver for container size changes
+    const resizeObserver = new ResizeObserver(handleResize)
+    resizeObserver.observe(containerRef.current)
 
     // Check if at bottom - used to determine if we should auto-scroll
     const isAtBottom = () => {
@@ -234,6 +285,10 @@ const XTerminal = forwardRef<XTerminalHandle, XTerminalProps>(({ className, onDa
 
     return () => {
       console.log('[XTerminal] Disposing terminal')
+      if (resizeTimeout) {
+        clearTimeout(resizeTimeout)
+      }
+      resizeObserver.disconnect()
       container?.removeEventListener('wheel', handleWheel)
       container?.removeEventListener('click', showCursor)
       textarea?.removeEventListener('focus', showCursor)
@@ -241,7 +296,7 @@ const XTerminal = forwardRef<XTerminalHandle, XTerminalProps>(({ className, onDa
       window.removeEventListener('focus', handleWindowFocus)
       terminal.dispose()
     }
-  }, [onData])
+  }, [onData, onResize])
 
   return (
     <div
