@@ -449,6 +449,7 @@ socket.on('connect_error', (err) => {
 
 // Handle PTY output
 ptyProcess.onData((data) => {
+  markDataReceived()
   // In interactive mode, write to local terminal
   if (!headless) {
     process.stdout.write(data)
@@ -608,10 +609,13 @@ function checkAndInject() {
   const timeSinceLastInject = Date.now() - lastInjected
   const timeSinceLastKeystroke = Date.now() - tracker.lastKeystroke
   const state = stateMachine?.state || 'unknown'
+  const timeSinceLastOutput = lastDataReceivedAt
+    ? (Date.now() - lastDataReceivedAt)
+    : Number.POSITIVE_INFINITY
 
   // Debug: log injection check status when there are pending messages
   if (messageQueue.length > 0) {
-    debug(`Inject check: queue=${messageQueue.length}, cooldown=${timeSinceLastInject}ms/${COOLDOWN_MS}ms, keystroke=${timeSinceLastKeystroke}ms/${IDLE_TIMEOUT_MS}ms, inputBuf=${tracker.buffer.length}, state=${state}`)
+    debug(`Inject check: queue=${messageQueue.length}, cooldown=${timeSinceLastInject}ms/${COOLDOWN_MS}ms, keystroke=${timeSinceLastKeystroke}ms/${IDLE_TIMEOUT_MS}ms, inputBuf=${tracker.buffer.length}, state=${state}, outputSilent=${timeSinceLastOutput}ms`)
   }
 
   if (timeSinceLastInject < COOLDOWN_MS) {
@@ -628,8 +632,14 @@ function checkAndInject() {
   // causes API error ("thinking blocks cannot be modified").
   // Safe to inject during: idle, waiting_input, working (tool execution)
   if (stateMachine && stateMachine.state === 'thinking') {
-    debug(`Skipping inject - agent is thinking (waiting for idle/working/waiting_input)`)
-    return
+    // If we've seen no output for a while, the agent is likely idle but
+    // the state machine missed the idle prompt. Allow injection to avoid
+    // starving queued messages.
+    if (timeSinceLastOutput < IDLE_TIMEOUT_MS) {
+      debug(`Skipping inject - agent is thinking (recent output ${timeSinceLastOutput}ms ago)`)
+      return
+    }
+    debug(`Thinking state but no output for ${timeSinceLastOutput}ms - allowing inject`)
   }
 
   const messages = messageQueue.splice(0, messageQueue.length)
