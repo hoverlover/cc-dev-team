@@ -39,6 +39,7 @@ export class StatusStateMachine {
     this.lastThinkingSeenAt = 0
     this.idleTransitionAt = 0  // When we last went idle
     this.lastInputReceivedAt = 0  // When we last received input (for debouncing permission prompts)
+    this.lastOutputAt = Date.now()  // When we last saw terminal output
     // Configuration - can be overridden via setConfig
     this.debounceMs = 100
     this.idleTimeoutMs = 1500
@@ -47,6 +48,10 @@ export class StatusStateMachine {
   setConfig({ debounceMs, idleTimeoutMs } = {}) {
     if (debounceMs !== undefined) this.debounceMs = debounceMs
     if (idleTimeoutMs !== undefined) this.idleTimeoutMs = idleTimeoutMs
+  }
+
+  noteOutput() {
+    this.lastOutputAt = Date.now()
   }
 
   transition(newState, task = '', waitingForInput = false) {
@@ -156,16 +161,24 @@ export class StatusStateMachine {
     if (this.idleTimer) {
       clearTimeout(this.idleTimer)
     }
-
-    this.idleTimer = setTimeout(() => {
-      // If we're in thinking or working state for too long without updates,
-      // transition to idle (completion may have been missed)
+    const tick = () => {
+      // If we're in thinking or working state for too long without output,
+      // transition to idle (completion may have been missed).
       if (this.state === 'thinking' || this.state === 'working') {
-        this.transition('idle')
-        // Clear buffer to prevent old thinking text from retriggering
-        if (buffer) buffer.clear()
+        const now = Date.now()
+        const timeSinceOutput = now - this.lastOutputAt
+        if (timeSinceOutput >= this.idleTimeoutMs) {
+          this.transition('idle')
+          // Clear buffer to prevent old thinking text from retriggering
+          if (buffer) buffer.clear()
+        } else {
+          // Output still flowing; reschedule based on remaining time
+          this.idleTimer = setTimeout(tick, this.idleTimeoutMs - timeSinceOutput)
+        }
       }
-    }, this.idleTimeoutMs)
+    }
+
+    this.idleTimer = setTimeout(tick, this.idleTimeoutMs)
   }
 
   cancelIdleTimeout() {

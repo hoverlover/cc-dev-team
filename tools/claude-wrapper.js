@@ -115,7 +115,7 @@ const messageQueue = []
 const pendingReadConfirmation = []
 
 // Configuration via environment variables
-const STATUS_IDLE_TIMEOUT_MS = parseInt(process.env.STATUS_IDLE_TIMEOUT_MS) || 1500
+const STATUS_IDLE_TIMEOUT_MS = parseInt(process.env.STATUS_IDLE_TIMEOUT_MS) || 8000
 const STATUS_DEBOUNCE_MS = parseInt(process.env.STATUS_DEBOUNCE_MS) || 100
 const STATUS_BUFFER_SIZE = parseInt(process.env.STATUS_BUFFER_SIZE) || 4096
 
@@ -454,6 +454,9 @@ socket.on('connect_error', (err) => {
 // Handle PTY output
 ptyProcess.onData((data) => {
   markDataReceived()
+  if (stateMachine) {
+    stateMachine.noteOutput()
+  }
   // In interactive mode, write to local terminal
   if (!headless) {
     process.stdout.write(data)
