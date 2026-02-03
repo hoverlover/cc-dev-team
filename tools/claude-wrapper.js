@@ -416,6 +416,10 @@ socket.on('connect', () => {
         socket.emit('agent_status', status)
       }
     })
+    stateMachine.setConfig({
+      debounceMs: STATUS_DEBOUNCE_MS,
+      idleTimeoutMs: STATUS_IDLE_TIMEOUT_MS
+    })
     // Emit initializing status on startup - start spinner animation
     stateMachine.startSpinner('Initializing...')
 
