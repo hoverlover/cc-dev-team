@@ -508,6 +508,33 @@ io.on('connection', (socket) => {
       }
     })
 
+    // ---- Open File in Editor ----
+
+    socket.on('open_file', ({ sessionId, filePath }) => {
+      if (!filePath) {
+        console.error('[Broker] open_file: No file path provided')
+        return
+      }
+
+      // Use VS Code's --goto flag which accepts file:line:col format
+      const args = ['--goto', filePath]
+
+      console.log(`[Broker] Opening file: code ${args.join(' ')}`)
+
+      const child = spawn('code', args, {
+        stdio: 'ignore',
+        detached: true
+      })
+
+      child.on('error', (err) => {
+        console.error(`[Broker] Failed to open file in VS Code:`, err.message)
+        // Could try fallback to 'open' command here if needed
+      })
+
+      // Unref so the parent process doesn't wait for this child
+      child.unref()
+    })
+
     // ---- Agent Info Request ----
 
     socket.on('get_agent_info', ({ sessionId, agent }, callback) => {

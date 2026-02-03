@@ -1,9 +1,10 @@
 'use client'
 
 import React, { useEffect, useRef, useImperativeHandle, forwardRef, useState } from 'react'
-import { Terminal } from '@xterm/xterm'
+import { Terminal, ILinkProvider, IBufferCellPosition, ILink } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
 import { WebLinksAddon } from '@xterm/addon-web-links'
+import { FILE_PATH_REGEX, parseFilePath, resolveFilePath, findFilePathsInLine } from '../lib/filePathMatcher'
 // Note: xterm.css is imported in page.tsx to avoid CSS chunk loading issues with dynamic imports
 
 // Minimum terminal size (scrollbars if container is smaller)
@@ -24,6 +25,8 @@ interface XTerminalProps {
   onReady?: () => void // Callback when terminal is ready to receive data
   onResize?: (cols: number, rows: number) => void // Callback when terminal is resized
   forwardedRef?: React.Ref<XTerminalHandle> // For dynamic import compatibility
+  projectDir?: string // Project directory for resolving relative file paths
+  onFileClick?: (filePath: string, line?: number, col?: number) => void // Callback when file path is clicked
 }
 
 // Terminal theme - lighter muted dark for visual separation
@@ -51,7 +54,7 @@ const terminalTheme = {
   brightWhite: '#ffffff',
 }
 
-const XTerminal = forwardRef<XTerminalHandle, XTerminalProps>(({ className, onData, onReady, onResize, forwardedRef }, ref) => {
+const XTerminal = forwardRef<XTerminalHandle, XTerminalProps>(({ className, onData, onReady, onResize, forwardedRef, projectDir, onFileClick }, ref) => {
   // Use forwardedRef if provided (from dynamic import wrapper), otherwise use ref
   const actualRef = forwardedRef || ref
   const containerRef = useRef<HTMLDivElement>(null)
@@ -138,6 +141,48 @@ const XTerminal = forwardRef<XTerminalHandle, XTerminalProps>(({ className, onDa
     // Add web links addon for clickable URLs
     const webLinksAddon = new WebLinksAddon()
     terminal.loadAddon(webLinksAddon)
+
+    // Add file path link provider for clickable file paths
+    if (onFileClick) {
+      const filePathLinkProvider: ILinkProvider = {
+        provideLinks: (bufferLineNumber: number, callback: (links: ILink[] | undefined) => void) => {
+          const buffer = terminal.buffer.active
+          const line = buffer.getLine(bufferLineNumber - 1)
+          if (!line) {
+            callback(undefined)
+            return
+          }
+
+          const lineText = line.translateToString()
+          const matches = findFilePathsInLine(lineText)
+
+          if (matches.length === 0) {
+            callback(undefined)
+            return
+          }
+
+          const links: ILink[] = matches.map(match => ({
+            range: {
+              start: { x: match.startIndex + 1, y: bufferLineNumber },
+              end: { x: match.endIndex + 1, y: bufferLineNumber }
+            },
+            text: lineText.substring(match.startIndex, match.endIndex),
+            decorations: {
+              underline: true,
+              pointerCursor: true
+            },
+            activate: () => {
+              const resolvedPath = resolveFilePath(match.path, projectDir)
+              onFileClick(resolvedPath, match.line, match.column)
+            }
+          }))
+
+          callback(links)
+        }
+      }
+
+      terminal.registerLinkProvider(filePathLinkProvider)
+    }
 
     // Open terminal in container
     terminal.open(containerRef.current)
@@ -296,7 +341,7 @@ const XTerminal = forwardRef<XTerminalHandle, XTerminalProps>(({ className, onDa
       window.removeEventListener('focus', handleWindowFocus)
       terminal.dispose()
     }
-  }, [onData, onResize])
+  }, [onData, onResize, projectDir, onFileClick])
 
   return (
     <div

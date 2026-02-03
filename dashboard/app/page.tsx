@@ -208,6 +208,26 @@ export default function Dashboard() {
     }
   }, [])
 
+  // Handle file path click - open in editor
+  const handleFileClick = useCallback((filePath: string, line?: number, col?: number) => {
+    if (!socketRef.current || !activeSessionIdRef.current) return
+
+    // Build the goto argument for VS Code: file:line:col
+    let gotoArg = filePath
+    if (line !== undefined) {
+      gotoArg += `:${line}`
+      if (col !== undefined) {
+        gotoArg += `:${col}`
+      }
+    }
+
+    // Emit to broker to execute the command server-side
+    socketRef.current.emit('open_file', {
+      sessionId: activeSessionIdRef.current,
+      filePath: gotoArg
+    })
+  }, [])
+
   // Handle drag events for visual feedback
   const handleDragEnter = useCallback((e: React.DragEvent) => {
     e.preventDefault()
@@ -980,6 +1000,8 @@ export default function Dashboard() {
                       onData={handleTerminalData}
                       onReady={handleTerminalReady}
                       onResize={handleTerminalResize}
+                      projectDir={currentSession?.projectDir}
+                      onFileClick={handleFileClick}
                     />
                   </div>
                 </>
