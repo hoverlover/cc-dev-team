@@ -120,6 +120,7 @@ let suppressInjectedLine = false
 const STATUS_IDLE_TIMEOUT_MS = parseInt(process.env.STATUS_IDLE_TIMEOUT_MS) || 8000
 const STATUS_DEBOUNCE_MS = parseInt(process.env.STATUS_DEBOUNCE_MS) || 100
 const STATUS_BUFFER_SIZE = parseInt(process.env.STATUS_BUFFER_SIZE) || 4096
+const INPUT_DEBUG = process.env.DEBUG_INPUT_TRACKER === 'true'
 
 // RingBuffer, InputTracker, StatusStateMachine imported from ./lib/index.js
 
@@ -381,7 +382,9 @@ const ptyProcess = pty.spawn(claudePath, fullClaudeArgs, {
   }
 })
 
-const tracker = new InputTracker()
+const tracker = new InputTracker(INPUT_DEBUG ? {
+  debug: (msg) => debug(`[InputTracker] ${msg}`)
+} : undefined)
 let lastInjected = 0
 const COOLDOWN_MS = 10000
 const CHECK_INTERVAL_MS = 5000
@@ -668,7 +671,8 @@ function checkAndInject() {
     return
   }
   if (!tracker.canInject(IDLE_TIMEOUT_MS)) {
-    debug(`Skipping inject - canInject=false (inputBuf=${tracker.buffer.length}, keystroke=${timeSinceLastKeystroke}ms ago)`)
+    const bufferInfo = INPUT_DEBUG ? ` ${tracker.getBufferDebug()}` : ''
+    debug(`Skipping inject - canInject=false (inputBuf=${tracker.buffer.length}, keystroke=${timeSinceLastKeystroke}ms ago)${bufferInfo}`)
     return
   }
   if (stateMachine && stateMachine.state === 'waiting_input') {
