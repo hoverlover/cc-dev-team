@@ -631,6 +631,10 @@ function checkAndInject() {
     debug(`Skipping inject - canInject=false (inputBuf=${tracker.buffer.length}, keystroke=${timeSinceLastKeystroke}ms ago)`)
     return
   }
+  if (stateMachine && stateMachine.state === 'waiting_input') {
+    debug('Skipping inject - agent waiting for input')
+    return
+  }
 
   // Don't inject while agent is actively streaming with extended thinking -
   // causes API error ("thinking blocks cannot be modified").
