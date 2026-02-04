@@ -113,11 +113,14 @@ const messageQueue = []
 
 // Track messages pending read confirmation (waiting for echo in terminal output)
 const pendingReadConfirmation = []
+const INJECTED_MESSAGE_MARKER = 'NEW TEAM MESSAGE'
+let suppressInjectedLine = false
 
 // Configuration via environment variables
-const STATUS_IDLE_TIMEOUT_MS = parseInt(process.env.STATUS_IDLE_TIMEOUT_MS) || 1500
+const STATUS_IDLE_TIMEOUT_MS = parseInt(process.env.STATUS_IDLE_TIMEOUT_MS) || 8000
 const STATUS_DEBOUNCE_MS = parseInt(process.env.STATUS_DEBOUNCE_MS) || 100
 const STATUS_BUFFER_SIZE = parseInt(process.env.STATUS_BUFFER_SIZE) || 4096
+const INPUT_DEBUG = process.env.DEBUG_INPUT_TRACKER === 'true'
 
 // RingBuffer, InputTracker, StatusStateMachine imported from ./lib/index.js
 
@@ -379,7 +382,9 @@ const ptyProcess = pty.spawn(claudePath, fullClaudeArgs, {
   }
 })
 
-const tracker = new InputTracker()
+const tracker = new InputTracker(INPUT_DEBUG ? {
+  debug: (msg) => debug(`[InputTracker] ${msg}`)
+} : undefined)
 let lastInjected = 0
 const COOLDOWN_MS = 10000
 const CHECK_INTERVAL_MS = 5000
@@ -416,6 +421,10 @@ socket.on('connect', () => {
         socket.emit('agent_status', status)
       }
     })
+    stateMachine.setConfig({
+      debounceMs: STATUS_DEBOUNCE_MS,
+      idleTimeoutMs: STATUS_IDLE_TIMEOUT_MS
+    })
     // Emit initializing status on startup - start spinner animation
     stateMachine.startSpinner('Initializing...')
 
@@ -449,16 +458,23 @@ socket.on('connect_error', (err) => {
 
 // Handle PTY output
 ptyProcess.onData((data) => {
+  markDataReceived()
+  if (stateMachine) {
+    stateMachine.noteOutput()
+  }
   // In interactive mode, write to local terminal
   if (!headless) {
     process.stdout.write(data)
   }
 
   // Accumulate output in ring buffer for status detection
-  outputBuffer.append(data)
+  const dataForBuffer = stripInjectedOutput(data)
+  if (dataForBuffer) {
+    outputBuffer.append(dataForBuffer)
+  }
 
   // Check if we see our injected message echoed back - confirms delivery
-  if (data.includes('NEW TEAM MESSAGE') && pendingReadConfirmation.length > 0) {
+  if (data.includes(INJECTED_MESSAGE_MARKER) && pendingReadConfirmation.length > 0) {
     debug('Detected message echo in output - confirming delivery')
     // Mark all pending as confirmed (they were displayed)
     for (const pending of pendingReadConfirmation) {
@@ -474,7 +490,7 @@ ptyProcess.onData((data) => {
     socket.emit('agent_output', { data })
 
     // Detect state transitions using buffered output
-    if (stateMachine) {
+    if (stateMachine && dataForBuffer) {
       detectStateTransition(outputBuffer, stateMachine)
     }
   }
@@ -497,6 +513,8 @@ if (headless) {
     if (stateMachine && stateMachine.state === 'waiting_input') {
       debug('Input received while waiting_input - clearing buffer and transitioning to thinking')
       outputBuffer.clear()
+      // Clear tracked input to avoid stale single-key responses blocking injection.
+      tracker.buffer = []
       stateMachine.lastInputReceivedAt = Date.now()
       stateMachine.transition('thinking', 'Processing input...')
     }
@@ -604,14 +622,45 @@ function formatMessageForInjection(msg) {
   return `[MESSAGE from ${msg.from_agent}] [${msg.message_type}]: ${content}`
 }
 
+function stripInjectedOutput(data) {
+  // Remove injected message line(s) from the state-detection buffer to avoid
+  // false positives on tool/prompt patterns.
+  if (data.includes(INJECTED_MESSAGE_MARKER)) {
+    const markerIndex = data.indexOf(INJECTED_MESSAGE_MARKER)
+    const before = data.slice(0, markerIndex)
+    const afterMarker = data.slice(markerIndex)
+    const lineEndIndex = afterMarker.search(/[\r\n]/)
+    if (lineEndIndex === -1) {
+      suppressInjectedLine = true
+      return before
+    }
+    suppressInjectedLine = false
+    return before + afterMarker.slice(lineEndIndex)
+  }
+
+  if (suppressInjectedLine) {
+    const lineEndIndex = data.search(/[\r\n]/)
+    if (lineEndIndex === -1) {
+      return ''
+    }
+    suppressInjectedLine = false
+    return data.slice(lineEndIndex)
+  }
+
+  return data
+}
+
 function checkAndInject() {
   const timeSinceLastInject = Date.now() - lastInjected
   const timeSinceLastKeystroke = Date.now() - tracker.lastKeystroke
   const state = stateMachine?.state || 'unknown'
+  const timeSinceLastOutput = lastDataReceivedAt
+    ? (Date.now() - lastDataReceivedAt)
+    : Number.POSITIVE_INFINITY
 
   // Debug: log injection check status when there are pending messages
   if (messageQueue.length > 0) {
-    debug(`Inject check: queue=${messageQueue.length}, cooldown=${timeSinceLastInject}ms/${COOLDOWN_MS}ms, keystroke=${timeSinceLastKeystroke}ms/${IDLE_TIMEOUT_MS}ms, inputBuf=${tracker.buffer.length}, state=${state}`)
+    debug(`Inject check: queue=${messageQueue.length}, cooldown=${timeSinceLastInject}ms/${COOLDOWN_MS}ms, keystroke=${timeSinceLastKeystroke}ms/${IDLE_TIMEOUT_MS}ms, inputBuf=${tracker.buffer.length}, state=${state}, outputSilent=${timeSinceLastOutput}ms`)
   }
 
   if (timeSinceLastInject < COOLDOWN_MS) {
@@ -619,8 +668,17 @@ function checkAndInject() {
     return
   }
   if (messageQueue.length === 0) return
+  if (!initialLoadComplete) {
+    debug('Skipping inject - initial load not complete')
+    return
+  }
   if (!tracker.canInject(IDLE_TIMEOUT_MS)) {
-    debug(`Skipping inject - canInject=false (inputBuf=${tracker.buffer.length}, keystroke=${timeSinceLastKeystroke}ms ago)`)
+    const bufferInfo = INPUT_DEBUG ? ` ${tracker.getBufferDebug()}` : ''
+    debug(`Skipping inject - canInject=false (inputBuf=${tracker.buffer.length}, keystroke=${timeSinceLastKeystroke}ms ago)${bufferInfo}`)
+    return
+  }
+  if (stateMachine && stateMachine.state === 'waiting_input') {
+    debug('Skipping inject - agent waiting for input')
     return
   }
 
@@ -628,8 +686,14 @@ function checkAndInject() {
   // causes API error ("thinking blocks cannot be modified").
   // Safe to inject during: idle, waiting_input, working (tool execution)
   if (stateMachine && stateMachine.state === 'thinking') {
-    debug(`Skipping inject - agent is thinking (waiting for idle/working/waiting_input)`)
-    return
+    // If we've seen no output for a while, the agent is likely idle but
+    // the state machine missed the idle prompt. Allow injection to avoid
+    // starving queued messages.
+    if (timeSinceLastOutput < IDLE_TIMEOUT_MS) {
+      debug(`Skipping inject - agent is thinking (recent output ${timeSinceLastOutput}ms ago)`)
+      return
+    }
+    debug(`Thinking state but no output for ${timeSinceLastOutput}ms - allowing inject`)
   }
 
   const messages = messageQueue.splice(0, messageQueue.length)

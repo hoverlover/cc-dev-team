@@ -2,7 +2,7 @@ import { defineConfig } from 'vitest/config'
 
 export default defineConfig({
   test: {
-    // Use 'forks' pool for native module compatibility (node-pty, better-sqlite3)
+    // Use 'forks' pool for native module compatibility (node-pty)
     pool: 'forks',
     // Test file patterns
     include: ['tests/**/*.test.js'],
