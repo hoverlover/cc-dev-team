@@ -63,6 +63,8 @@ const XTerminal = forwardRef<XTerminalHandle, XTerminalProps>(({ className, onDa
   const [isReady, setIsReady] = useState(false)
   // Track whether we're pinned to bottom (starts pinned)
   const pinnedToBottomRef = useRef(true)
+  // Track disposal state to prevent operations on disposed terminal
+  const isDisposedRef = useRef(false)
 
   useImperativeHandle(actualRef, () => ({
     write: (data: string) => {
@@ -116,6 +118,9 @@ const XTerminal = forwardRef<XTerminalHandle, XTerminalProps>(({ className, onDa
 
   useEffect(() => {
     if (!containerRef.current) return
+
+    // Reset disposed flag for new terminal instance
+    isDisposedRef.current = false
 
     // Create terminal - FitAddon will set actual size based on container
     const terminal = new Terminal({
@@ -212,20 +217,27 @@ const XTerminal = forwardRef<XTerminalHandle, XTerminalProps>(({ className, onDa
         clearTimeout(resizeTimeout)
       }
       resizeTimeout = setTimeout(() => {
+        // Check disposed flag FIRST to avoid operations on disposed terminal
+        if (isDisposedRef.current) return
         if (fitAddonRef.current && terminalRef.current) {
-          fitAddonRef.current.fit()
-          const t = terminalRef.current
-          // Enforce minimum size
-          const newCols = Math.max(t.cols, MIN_COLS)
-          const newRows = Math.max(t.rows, MIN_ROWS)
-          if (t.cols !== newCols || t.rows !== newRows) {
-            t.resize(newCols, newRows)
+          try {
+            fitAddonRef.current.fit()
+            const t = terminalRef.current
+            // Enforce minimum size
+            const newCols = Math.max(t.cols, MIN_COLS)
+            const newRows = Math.max(t.rows, MIN_ROWS)
+            if (t.cols !== newCols || t.rows !== newRows) {
+              t.resize(newCols, newRows)
+            }
+            // Notify parent of new size
+            if (onResize) {
+              onResize(t.cols, t.rows)
+            }
+            console.log(`[XTerminal] Resized to ${t.cols}x${t.rows}`)
+          } catch (e) {
+            // Terminal may be partially disposed, ignore errors
+            console.warn('[XTerminal] Resize failed (terminal may be disposed):', e)
           }
-          // Notify parent of new size
-          if (onResize) {
-            onResize(t.cols, t.rows)
-          }
-          console.log(`[XTerminal] Resized to ${t.cols}x${t.rows}`)
         }
       }, 100) // 100ms debounce
     }
@@ -236,9 +248,14 @@ const XTerminal = forwardRef<XTerminalHandle, XTerminalProps>(({ className, onDa
 
     // Check if at bottom - used to determine if we should auto-scroll
     const isAtBottom = () => {
-      const buffer = terminal.buffer.active
-      const distanceFromBottom = buffer.baseY - buffer.viewportY
-      return distanceFromBottom <= 1
+      if (isDisposedRef.current) return true
+      try {
+        const buffer = terminal.buffer.active
+        const distanceFromBottom = buffer.baseY - buffer.viewportY
+        return distanceFromBottom <= 1
+      } catch {
+        return true
+      }
     }
 
     // IMPORTANT: xterm's onScroll does NOT fire on user scroll (known bug)
@@ -247,7 +264,9 @@ const XTerminal = forwardRef<XTerminalHandle, XTerminalProps>(({ className, onDa
     // ONLY user wheel events can unpin (set to false) - this prevents
     // automatic scroll events during large writes from incorrectly unpinning
     const handleWheel = () => {
+      if (isDisposedRef.current) return
       requestAnimationFrame(() => {
+        if (isDisposedRef.current) return
         pinnedToBottomRef.current = isAtBottom()
       })
     }
@@ -256,6 +275,7 @@ const XTerminal = forwardRef<XTerminalHandle, XTerminalProps>(({ className, onDa
     // onScroll/onLineFeed fire during writes - these should only RE-PIN
     // if we've reached the bottom, never unpin (that's only for user scroll)
     const maybeRepin = () => {
+      if (isDisposedRef.current) return
       if (!pinnedToBottomRef.current && isAtBottom()) {
         pinnedToBottomRef.current = true
       }
@@ -292,12 +312,17 @@ const XTerminal = forwardRef<XTerminalHandle, XTerminalProps>(({ className, onDa
     // Claude Code may hide cursor during processing and not restore it
     // IMPORTANT: Preserve scroll position to prevent viewport jumping
     const showCursor = () => {
-      const buffer = terminal.buffer.active
-      const viewportY = buffer.viewportY
-      terminal.write('\x1b[?25h') // Show cursor escape sequence
-      // Restore viewport if it changed (shouldn't, but defensive)
-      if (buffer.viewportY !== viewportY) {
-        terminal.scrollToLine(viewportY)
+      if (isDisposedRef.current) return
+      try {
+        const buffer = terminal.buffer.active
+        const viewportY = buffer.viewportY
+        terminal.write('\x1b[?25h') // Show cursor escape sequence
+        // Restore viewport if it changed (shouldn't, but defensive)
+        if (buffer.viewportY !== viewportY) {
+          terminal.scrollToLine(viewportY)
+        }
+      } catch {
+        // Terminal may be disposed
       }
     }
     terminal.textarea?.addEventListener('focus', showCursor)
@@ -306,14 +331,24 @@ const XTerminal = forwardRef<XTerminalHandle, XTerminalProps>(({ className, onDa
     // Refresh terminal when browser tab regains focus/visibility
     // This fixes blank terminal issues after tab switching or window focus loss
     const handleVisibilityChange = () => {
+      if (isDisposedRef.current) return
       if (document.visibilityState === 'visible') {
         console.log('[XTerminal] Tab visible, refreshing terminal')
-        terminal.refresh(0, terminal.rows - 1)
+        try {
+          terminal.refresh(0, terminal.rows - 1)
+        } catch {
+          // Terminal may be disposed
+        }
       }
     }
     const handleWindowFocus = () => {
+      if (isDisposedRef.current) return
       console.log('[XTerminal] Window focused, refreshing terminal')
-      terminal.refresh(0, terminal.rows - 1)
+      try {
+        terminal.refresh(0, terminal.rows - 1)
+      } catch {
+        // Terminal may be disposed
+      }
     }
     document.addEventListener('visibilitychange', handleVisibilityChange)
     window.addEventListener('focus', handleWindowFocus)
@@ -330,6 +365,11 @@ const XTerminal = forwardRef<XTerminalHandle, XTerminalProps>(({ className, onDa
 
     return () => {
       console.log('[XTerminal] Disposing terminal')
+      // Set disposed flag FIRST to prevent async operations from running
+      isDisposedRef.current = true
+      // Clear refs before disposing to prevent any in-flight operations
+      terminalRef.current = null
+      fitAddonRef.current = null
       if (resizeTimeout) {
         clearTimeout(resizeTimeout)
       }
