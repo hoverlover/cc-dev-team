@@ -513,6 +513,8 @@ if (headless) {
     if (stateMachine && stateMachine.state === 'waiting_input') {
       debug('Input received while waiting_input - clearing buffer and transitioning to thinking')
       outputBuffer.clear()
+      // Clear tracked input to avoid stale single-key responses blocking injection.
+      tracker.buffer = []
       stateMachine.lastInputReceivedAt = Date.now()
       stateMachine.transition('thinking', 'Processing input...')
     }
