@@ -5,8 +5,8 @@ describe('InputTracker', () => {
   let tracker
 
   beforeEach(() => {
-    tracker = new InputTracker()
     vi.useFakeTimers()
+    tracker = new InputTracker()
   })
 
   describe('constructor', () => {
