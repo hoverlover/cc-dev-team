@@ -68,49 +68,60 @@ const XTerminal = forwardRef<XTerminalHandle, XTerminalProps>(({ className, onDa
 
   useImperativeHandle(actualRef, () => ({
     write: (data: string) => {
-      console.log('[XTerminal] write called', { dataLen: data.length, hasTerminal: !!terminalRef.current })
+      if (isDisposedRef.current) return
       if (terminalRef.current) {
-        const terminal = terminalRef.current
-        const buffer = terminal.buffer.active
-        // Capture pinned state and viewport position BEFORE writing
-        // (write might trigger scroll via escape sequences like \x1b[H cursor home)
-        const shouldScroll = pinnedToBottomRef.current
-        const previousViewportY = buffer.viewportY
+        try {
+          const terminal = terminalRef.current
+          const buffer = terminal.buffer.active
+          // Capture pinned state and viewport position BEFORE writing
+          // (write might trigger scroll via escape sequences like \x1b[H cursor home)
+          const shouldScroll = pinnedToBottomRef.current
+          const previousViewportY = buffer.viewportY
 
-        terminal.write(data)
+          terminal.write(data)
 
-        if (shouldScroll) {
-          terminal.scrollToBottom()
-        } else {
-          // Restore viewport position if user was scrolled up
-          // This prevents escape sequences in the output from jumping the viewport
-          const currentViewportY = buffer.viewportY
-          if (currentViewportY !== previousViewportY) {
-            terminal.scrollToLine(previousViewportY)
+          if (shouldScroll) {
+            terminal.scrollToBottom()
+          } else {
+            // Restore viewport position if user was scrolled up
+            // This prevents escape sequences in the output from jumping the viewport
+            const currentViewportY = buffer.viewportY
+            if (currentViewportY !== previousViewportY) {
+              terminal.scrollToLine(previousViewportY)
+            }
           }
+        } catch {
+          // Terminal may be partially disposed
         }
       }
     },
     clear: () => {
+      if (isDisposedRef.current) return
       terminalRef.current?.clear()
     },
     focus: () => {
+      if (isDisposedRef.current) return
       terminalRef.current?.focus()
       // Don't force scroll on focus - respect user's pinned state
     },
     getBuffer: () => {
-      if (!terminalRef.current) return ''
-      const buffer = terminalRef.current.buffer.active
-      const lines: string[] = []
-      for (let i = 0; i < buffer.length; i++) {
-        const line = buffer.getLine(i)
-        if (line) {
-          lines.push(line.translateToString())
+      if (isDisposedRef.current || !terminalRef.current) return ''
+      try {
+        const buffer = terminalRef.current.buffer.active
+        const lines: string[] = []
+        for (let i = 0; i < buffer.length; i++) {
+          const line = buffer.getLine(i)
+          if (line) {
+            lines.push(line.translateToString())
+          }
         }
+        return lines.join('\n')
+      } catch {
+        return ''
       }
-      return lines.join('\n')
     },
     scrollToBottom: () => {
+      if (isDisposedRef.current) return
       pinnedToBottomRef.current = true
       terminalRef.current?.scrollToBottom()
     },
@@ -193,20 +204,25 @@ const XTerminal = forwardRef<XTerminalHandle, XTerminalProps>(({ className, onDa
     terminal.open(containerRef.current)
     terminalRef.current = terminal
 
-    // Initial fit after opening (fit to container size)
-    fitAddon.fit()
-
-    // Enforce minimum size
-    const cols = Math.max(terminal.cols, MIN_COLS)
-    const rows = Math.max(terminal.rows, MIN_ROWS)
-    if (terminal.cols !== cols || terminal.rows !== rows) {
-      terminal.resize(cols, rows)
-    }
-
-    // Notify parent of initial size
-    if (onResize) {
-      onResize(terminal.cols, terminal.rows)
-    }
+    // Initial fit after opening - defer to next frame so xterm viewport is ready
+    requestAnimationFrame(() => {
+      if (isDisposedRef.current) return
+      try {
+        fitAddon.fit()
+        // Enforce minimum size
+        const cols = Math.max(terminal.cols, MIN_COLS)
+        const rows = Math.max(terminal.rows, MIN_ROWS)
+        if (terminal.cols !== cols || terminal.rows !== rows) {
+          terminal.resize(cols, rows)
+        }
+        // Notify parent of initial size
+        if (onResize) {
+          onResize(terminal.cols, terminal.rows)
+        }
+      } catch (e) {
+        console.warn('[XTerminal] Initial fit failed:', e)
+      }
+    })
 
     setIsReady(true)
 
@@ -367,9 +383,8 @@ const XTerminal = forwardRef<XTerminalHandle, XTerminalProps>(({ className, onDa
       console.log('[XTerminal] Disposing terminal')
       // Set disposed flag FIRST to prevent async operations from running
       isDisposedRef.current = true
-      // Clear refs before disposing to prevent any in-flight operations
-      terminalRef.current = null
-      fitAddonRef.current = null
+      // Note: Do NOT clear terminalRef/fitAddonRef here - React's useImperativeHandle
+      // cleanup may still be referencing them. The disposed flag is sufficient protection.
       if (resizeTimeout) {
         clearTimeout(resizeTimeout)
       }
