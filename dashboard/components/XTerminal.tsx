@@ -177,6 +177,11 @@ const XTerminal = forwardRef<XTerminalHandle, XTerminalProps>(({ className, onDa
             return
           }
 
+          console.log('[XTerminal] provideLinks found matches:', {
+            line: bufferLineNumber,
+            matches: matches.map(m => ({ path: m.path, start: m.startIndex, end: m.endIndex }))
+          })
+
           const links: ILink[] = matches.map(match => ({
             range: {
               start: { x: match.startIndex + 1, y: bufferLineNumber },
@@ -187,7 +192,16 @@ const XTerminal = forwardRef<XTerminalHandle, XTerminalProps>(({ className, onDa
               underline: true,
               pointerCursor: true
             },
-            activate: () => {
+            activate: (event, text) => {
+              console.log('[XTerminal] Link activated!', {
+                path: match.path,
+                line: match.line,
+                column: match.column,
+                text,
+                event: event?.type,
+                ctrlKey: event?.ctrlKey,
+                metaKey: event?.metaKey
+              })
               const resolvedPath = resolveFilePath(match.path, projectDir)
               onFileClick(resolvedPath, match.line, match.column)
             }

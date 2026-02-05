@@ -210,7 +210,17 @@ export default function Dashboard() {
 
   // Handle file path click - open in editor
   const handleFileClick = useCallback((filePath: string, line?: number, col?: number) => {
-    if (!socketRef.current || !activeSessionIdRef.current) return
+    console.log('[Dashboard] handleFileClick called', {
+      filePath,
+      line,
+      col,
+      hasSocket: !!socketRef.current,
+      activeSession: activeSessionIdRef.current
+    })
+    if (!socketRef.current || !activeSessionIdRef.current) {
+      console.warn('[Dashboard] handleFileClick aborted - missing refs')
+      return
+    }
 
     // Build the goto argument for VS Code: file:line:col
     let gotoArg = filePath
@@ -255,7 +265,16 @@ export default function Dashboard() {
     e.stopPropagation()
     setIsDragging(false)
 
-    if (!socketRef.current || !selectedAgentRef.current || !activeSessionIdRef.current) return
+    console.log('[Dashboard] handleDrop called', {
+      hasSocket: !!socketRef.current,
+      selectedAgent: selectedAgentRef.current,
+      activeSession: activeSessionIdRef.current,
+      fileCount: e.dataTransfer.files.length
+    })
+    if (!socketRef.current || !selectedAgentRef.current || !activeSessionIdRef.current) {
+      console.warn('[Dashboard] handleDrop aborted - missing refs')
+      return
+    }
 
     const files = Array.from(e.dataTransfer.files)
     if (files.length === 0) return
