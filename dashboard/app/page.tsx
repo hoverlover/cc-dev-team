@@ -739,14 +739,6 @@ export default function Dashboard() {
     socket.on('agent_output', ({ sessionId, agent, data }: { sessionId: string; agent: string; data: string }) => {
       const isMatch = sessionId === activeSessionIdRef.current && agent === selectedAgentRef.current
       const hasRef = !!xtermRef.current
-      console.log('[Dashboard] agent_output received', {
-        agent,
-        dataLen: data.length,
-        isMatch,
-        hasRef,
-        activeSession: activeSessionIdRef.current,
-        selectedAgent: selectedAgentRef.current
-      })
       if (isMatch && hasRef) {
         xtermRef.current!.write(data)
       } else {
