@@ -543,6 +543,12 @@ export default function Dashboard() {
 
     socket.on('connect', () => {
       setConnected(true)
+      // Rejoin active session room on reconnect (room membership is lost on disconnect)
+      if (activeSessionIdRef.current) {
+        socket.emit('join_session', { sessionId: activeSessionIdRef.current }, () => {
+          // Room rejoined - no need to update state, just restore room membership
+        })
+      }
     })
 
     socket.on('disconnect', () => {
