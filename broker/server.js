@@ -462,6 +462,20 @@ io.on('connection', (socket) => {
       const agentInfo = session.agents.get(agent)
       if (agentInfo && agentInfo.socketId) {
         io.to(agentInfo.socketId).emit('agent_input', { data })
+
+        // Proactively clear waitingForInput badge when user provides input
+        // This ensures the badge clears immediately even if the agent's status
+        // update is missed due to timing or socket issues
+        if (agentInfo.waitingForInput) {
+          agentInfo.waitingForInput = false
+          io.to(`session:${sessionId}:dashboard`).emit('agent_status', {
+            sessionId,
+            role: agent,
+            status: agentInfo.status,
+            task: agentInfo.task,
+            waitingForInput: false
+          })
+        }
       }
     })
 
