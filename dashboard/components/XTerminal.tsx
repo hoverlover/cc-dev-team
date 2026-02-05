@@ -5,6 +5,7 @@ import { Terminal, ILinkProvider, IBufferCellPosition, ILink } from '@xterm/xter
 import { FitAddon } from '@xterm/addon-fit'
 import { WebLinksAddon } from '@xterm/addon-web-links'
 import { FILE_PATH_REGEX, parseFilePath, resolveFilePath, findFilePathsInLine } from '../lib/filePathMatcher'
+import { ScrollPinController } from '../lib/scrollPinController'
 // Note: xterm.css is imported in page.tsx to avoid CSS chunk loading issues with dynamic imports
 
 // Minimum terminal size (scrollbars if container is smaller)
@@ -61,8 +62,8 @@ const XTerminal = forwardRef<XTerminalHandle, XTerminalProps>(({ className, onDa
   const terminalRef = useRef<Terminal | null>(null)
   const fitAddonRef = useRef<FitAddon | null>(null)
   const [isReady, setIsReady] = useState(false)
-  // Track whether we're pinned to bottom (starts pinned)
-  const pinnedToBottomRef = useRef(true)
+  // Scroll pin state machine - controls auto-scroll behavior
+  const scrollPinRef = useRef(new ScrollPinController())
   // Track disposal state to prevent operations on disposed terminal
   const isDisposedRef = useRef(false)
 
@@ -73,12 +74,18 @@ const XTerminal = forwardRef<XTerminalHandle, XTerminalProps>(({ className, onDa
         try {
           const terminal = terminalRef.current
           const buffer = terminal.buffer.active
+          const scrollPin = scrollPinRef.current
           // Capture pinned state and viewport position BEFORE writing
           // (write might trigger scroll via escape sequences like \x1b[H cursor home)
-          const shouldScroll = pinnedToBottomRef.current
+          const shouldScroll = scrollPin.pinned
           const previousViewportY = buffer.viewportY
 
+          // Guard: suppress maybeRepin during write to prevent false re-pinning
+          // from xterm's internal buffer state changes (onScroll/onLineFeed fire
+          // synchronously during write and can see viewport temporarily at bottom)
+          scrollPin.beginWrite()
           terminal.write(data)
+          scrollPin.endWrite()
 
           if (shouldScroll) {
             terminal.scrollToBottom()
@@ -92,6 +99,7 @@ const XTerminal = forwardRef<XTerminalHandle, XTerminalProps>(({ className, onDa
           }
         } catch {
           // Terminal may be partially disposed
+          scrollPinRef.current.endWrite()
         }
       }
     },
@@ -122,7 +130,7 @@ const XTerminal = forwardRef<XTerminalHandle, XTerminalProps>(({ className, onDa
     },
     scrollToBottom: () => {
       if (isDisposedRef.current) return
-      pinnedToBottomRef.current = true
+      scrollPinRef.current.pin()
       terminalRef.current?.scrollToBottom()
     },
   }), [isReady])
@@ -297,18 +305,18 @@ const XTerminal = forwardRef<XTerminalHandle, XTerminalProps>(({ className, onDa
       if (isDisposedRef.current) return
       requestAnimationFrame(() => {
         if (isDisposedRef.current) return
-        pinnedToBottomRef.current = isAtBottom()
+        scrollPinRef.current.onUserScroll(isAtBottom())
       })
     }
     containerRef.current.addEventListener('wheel', handleWheel)
 
     // onScroll/onLineFeed fire during writes - these should only RE-PIN
-    // if we've reached the bottom, never unpin (that's only for user scroll)
+    // if we've reached the bottom, never unpin (that's only for user scroll).
+    // The controller suppresses these events during write operations to prevent
+    // false re-pinning from xterm's transient internal buffer state.
     const maybeRepin = () => {
       if (isDisposedRef.current) return
-      if (!pinnedToBottomRef.current && isAtBottom()) {
-        pinnedToBottomRef.current = true
-      }
+      scrollPinRef.current.onAutoEvent(isAtBottom())
     }
     terminal.onScroll(maybeRepin)
     terminal.onLineFeed(maybeRepin)
@@ -330,7 +338,7 @@ const XTerminal = forwardRef<XTerminalHandle, XTerminalProps>(({ className, onDa
       terminal.onData((data) => {
         onData(data)
         // Scroll to bottom and re-pin when user types
-        pinnedToBottomRef.current = true
+        scrollPinRef.current.onUserInput()
         terminal.scrollToBottom()
       })
     }
