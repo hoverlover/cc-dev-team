@@ -35,7 +35,8 @@
       "Bash(git:*)",
       "Bash(cd:*)",
       "Bash(gh:*)",
-      "Skill(new-feature)"
+      "Skill(new-feature)",
+      "Bash(pwd)"
     ]
   },
   "spinnerVerbs": {

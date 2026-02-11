@@ -38,7 +38,8 @@
       "Bash(bun:*)",
       "Skill(smart-commit)",
       "Skill(worktree)",
-      "Skill(dev-server)"
+      "Skill(dev-server)",
+      "Bash(pwd)"
     ]
   },
   "spinnerVerbs": {

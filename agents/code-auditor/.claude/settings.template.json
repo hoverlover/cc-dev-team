@@ -30,7 +30,8 @@
       "Bash(mkdir -p __HOME_DIR__/.cc-dev-team/worktrees/*)",
       "Bash(git:*)",
       "Bash(cd:*)",
-      "Bash(gh:*)"
+      "Bash(gh:*)",
+      "Bash(pwd)"
     ]
   },
   "spinnerVerbs": {
