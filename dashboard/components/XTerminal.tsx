@@ -61,39 +61,13 @@ const XTerminal = forwardRef<XTerminalHandle, XTerminalProps>(({ className, onDa
   const terminalRef = useRef<Terminal | null>(null)
   const fitAddonRef = useRef<FitAddon | null>(null)
   const [isReady, setIsReady] = useState(false)
-  // Track whether we're pinned to bottom (starts pinned)
-  const pinnedToBottomRef = useRef(true)
   // Track disposal state to prevent operations on disposed terminal
   const isDisposedRef = useRef(false)
 
   useImperativeHandle(actualRef, () => ({
     write: (data: string) => {
       if (isDisposedRef.current) return
-      if (terminalRef.current) {
-        try {
-          const terminal = terminalRef.current
-          const buffer = terminal.buffer.active
-          // Capture pinned state and viewport position BEFORE writing
-          // (write might trigger scroll via escape sequences like \x1b[H cursor home)
-          const shouldScroll = pinnedToBottomRef.current
-          const previousViewportY = buffer.viewportY
-
-          terminal.write(data)
-
-          if (shouldScroll) {
-            terminal.scrollToBottom()
-          } else {
-            // Restore viewport position if user was scrolled up
-            // This prevents escape sequences in the output from jumping the viewport
-            const currentViewportY = buffer.viewportY
-            if (currentViewportY !== previousViewportY) {
-              terminal.scrollToLine(previousViewportY)
-            }
-          }
-        } catch {
-          // Terminal may be partially disposed
-        }
-      }
+      terminalRef.current?.write(data)
     },
     clear: () => {
       if (isDisposedRef.current) return
@@ -102,7 +76,6 @@ const XTerminal = forwardRef<XTerminalHandle, XTerminalProps>(({ className, onDa
     focus: () => {
       if (isDisposedRef.current) return
       terminalRef.current?.focus()
-      // Don't force scroll on focus - respect user's pinned state
     },
     getBuffer: () => {
       if (isDisposedRef.current || !terminalRef.current) return ''
@@ -122,7 +95,6 @@ const XTerminal = forwardRef<XTerminalHandle, XTerminalProps>(({ className, onDa
     },
     scrollToBottom: () => {
       if (isDisposedRef.current) return
-      pinnedToBottomRef.current = true
       terminalRef.current?.scrollToBottom()
     },
   }), [isReady])
@@ -276,43 +248,6 @@ const XTerminal = forwardRef<XTerminalHandle, XTerminalProps>(({ className, onDa
     const resizeObserver = new ResizeObserver(handleResize)
     resizeObserver.observe(containerRef.current)
 
-    // Check if at bottom - used to determine if we should auto-scroll
-    const isAtBottom = () => {
-      if (isDisposedRef.current) return true
-      try {
-        const buffer = terminal.buffer.active
-        const distanceFromBottom = buffer.baseY - buffer.viewportY
-        return distanceFromBottom <= 1
-      } catch {
-        return true
-      }
-    }
-
-    // IMPORTANT: xterm's onScroll does NOT fire on user scroll (known bug)
-    // We must listen to wheel events on the container directly
-    // See: https://github.com/xtermjs/xterm.js/issues/3864
-    // ONLY user wheel events can unpin (set to false) - this prevents
-    // automatic scroll events during large writes from incorrectly unpinning
-    const handleWheel = () => {
-      if (isDisposedRef.current) return
-      requestAnimationFrame(() => {
-        if (isDisposedRef.current) return
-        pinnedToBottomRef.current = isAtBottom()
-      })
-    }
-    containerRef.current.addEventListener('wheel', handleWheel)
-
-    // onScroll/onLineFeed fire during writes - these should only RE-PIN
-    // if we've reached the bottom, never unpin (that's only for user scroll)
-    const maybeRepin = () => {
-      if (isDisposedRef.current) return
-      if (!pinnedToBottomRef.current && isAtBottom()) {
-        pinnedToBottomRef.current = true
-      }
-    }
-    terminal.onScroll(maybeRepin)
-    terminal.onLineFeed(maybeRepin)
-
     // Handle Shift+Enter for multiline input (sends same as Option+Enter)
     terminal.attachCustomKeyEventHandler((event) => {
       // Block both keydown AND keypress for Shift+Enter to prevent submit
@@ -329,8 +264,7 @@ const XTerminal = forwardRef<XTerminalHandle, XTerminalProps>(({ className, onDa
     if (onData) {
       terminal.onData((data) => {
         onData(data)
-        // Scroll to bottom and re-pin when user types
-        pinnedToBottomRef.current = true
+        // Scroll to bottom when user types so they see the prompt
         terminal.scrollToBottom()
       })
     }
@@ -403,7 +337,6 @@ const XTerminal = forwardRef<XTerminalHandle, XTerminalProps>(({ className, onDa
         clearTimeout(resizeTimeout)
       }
       resizeObserver.disconnect()
-      container?.removeEventListener('wheel', handleWheel)
       container?.removeEventListener('click', showCursor)
       textarea?.removeEventListener('focus', showCursor)
       document.removeEventListener('visibilitychange', handleVisibilityChange)
