@@ -57,12 +57,13 @@ const io = new Server(server, {
 const sessions = new Map()
 
 // Session structure
-function createSession(projectDir, name = null) {
+function createSession(projectDir, name = null, { skipPermissions = false } = {}) {
   const id = randomUUID()
   const session = {
     id,
     name: name || basename(projectDir),
     projectDir: resolve(projectDir),
+    skipPermissions,
     createdAt: new Date().toISOString(),
     agents: new Map(),           // role -> agent info
     outputBuffers: new Map(),    // role -> terminal output string
@@ -183,6 +184,9 @@ function spawnAgent(session, role) {
   const agentSettings = agentConfigDir ? join(agentConfigDir, '.claude', 'settings.json') : null
 
   console.log(`[Broker] Spawning ${actualRole} in ${session.projectDir} for session ${session.id}`)
+  if (session.skipPermissions) {
+    console.log(`[Broker] WARNING: Spawning ${actualRole} with --dangerously-skip-permissions`)
+  }
   if (agentSystemPrompt && existsSync(agentSystemPrompt)) {
     console.log(`[Broker] Agent system prompt: ${agentSystemPrompt}`)
   }
@@ -202,7 +206,8 @@ function spawnAgent(session, role) {
       PLUGINS_DIR: PLUGINS_DIR,
       AGENT_SYSTEM_PROMPT: agentSystemPrompt && existsSync(agentSystemPrompt) ? agentSystemPrompt : '',
       AGENT_SETTINGS: agentSettings && existsSync(agentSettings) ? agentSettings : '',
-      HEADLESS: 'true'
+      HEADLESS: 'true',
+      ...(session.skipPermissions ? { SKIP_PERMISSIONS: 'true' } : {})
     },
     stdio: ['pipe', 'pipe', 'pipe']
   })
@@ -293,9 +298,9 @@ io.on('connection', (socket) => {
 
     // ---- Session Management ----
 
-    socket.on('create_session', ({ projectDir, name, agents = ['pm'] }, callback) => {
+    socket.on('create_session', ({ projectDir, name, agents = ['pm'], skipPermissions = false }, callback) => {
       try {
-        const session = createSession(projectDir, name)
+        const session = createSession(projectDir, name, { skipPermissions })
 
         // Notify all dashboards of new session
         io.to('dashboards').emit('session_created', {
