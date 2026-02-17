@@ -60,6 +60,9 @@ const XTerminal = forwardRef<XTerminalHandle, XTerminalProps>(({ className, onDa
   const containerRef = useRef<HTMLDivElement>(null)
   const terminalRef = useRef<Terminal | null>(null)
   const fitAddonRef = useRef<FitAddon | null>(null)
+  const refreshRafRef = useRef<number | null>(null)
+  const requestRefreshRef = useRef<(() => void) | null>(null)
+  const lastWriteAtRef = useRef(Date.now())
   const [isReady, setIsReady] = useState(false)
   // Track disposal state to prevent operations on disposed terminal
   const isDisposedRef = useRef(false)
@@ -67,7 +70,10 @@ const XTerminal = forwardRef<XTerminalHandle, XTerminalProps>(({ className, onDa
   useImperativeHandle(actualRef, () => ({
     write: (data: string) => {
       if (isDisposedRef.current) return
+      lastWriteAtRef.current = Date.now()
       terminalRef.current?.write(data)
+      // Force a repaint after writes so Claude's rendered cursor/state does not get stale.
+      requestRefreshRef.current?.()
     },
     clear: () => {
       if (isDisposedRef.current) return
@@ -107,7 +113,7 @@ const XTerminal = forwardRef<XTerminalHandle, XTerminalProps>(({ className, onDa
 
     // Create terminal - FitAddon will set actual size based on container
     const terminal = new Terminal({
-      // Hide xterm's cursor - Claude Code renders its own cursor
+      // Hide xterm's cursor - Claude Code renders its own in the prompt UI.
       cursorBlink: false,
       cursorStyle: 'bar',
       cursorInactiveStyle: 'none',
@@ -190,6 +196,21 @@ const XTerminal = forwardRef<XTerminalHandle, XTerminalProps>(({ className, onDa
     terminal.open(containerRef.current)
     terminalRef.current = terminal
 
+    // Debounced refresh helper to keep canvas rendering in sync over long sessions.
+    const requestRefresh = () => {
+      if (isDisposedRef.current || refreshRafRef.current !== null) return
+      refreshRafRef.current = requestAnimationFrame(() => {
+        refreshRafRef.current = null
+        if (isDisposedRef.current) return
+        try {
+          terminal.refresh(0, terminal.rows - 1)
+        } catch {
+          // Terminal may be disposed
+        }
+      })
+    }
+    requestRefreshRef.current = requestRefresh
+
     // Initial fit after opening - defer to next frame so xterm viewport is ready
     requestAnimationFrame(() => {
       if (isDisposedRef.current) return
@@ -235,6 +256,7 @@ const XTerminal = forwardRef<XTerminalHandle, XTerminalProps>(({ className, onDa
             if (onResize) {
               onResize(t.cols, t.rows)
             }
+            requestRefresh()
             console.log(`[XTerminal] Resized to ${t.cols}x${t.rows}`)
           } catch (e) {
             // Terminal may be partially disposed, ignore errors
@@ -281,6 +303,7 @@ const XTerminal = forwardRef<XTerminalHandle, XTerminalProps>(({ className, onDa
         const buffer = terminal.buffer.active
         const viewportY = buffer.viewportY
         terminal.write('\x1b[?25h') // Show cursor escape sequence
+        requestRefresh()
         // Restore viewport if it changed (shouldn't, but defensive)
         if (buffer.viewportY !== viewportY) {
           terminal.scrollToLine(viewportY)
@@ -291,6 +314,22 @@ const XTerminal = forwardRef<XTerminalHandle, XTerminalProps>(({ className, onDa
     }
     terminal.textarea?.addEventListener('focus', showCursor)
     containerRef.current.addEventListener('click', showCursor)
+
+    // Cursor heartbeat: recover from unmatched hide-cursor sequences while idle.
+    const cursorHeartbeat = setInterval(() => {
+      if (isDisposedRef.current) return
+      if (document.visibilityState !== 'visible') return
+      // Avoid forcing cursor state during active output updates.
+      if (Date.now() - lastWriteAtRef.current < 600) return
+      showCursor()
+    }, 1200)
+
+    // Periodic repaint guard for long-lived sessions where canvas layers may stale.
+    const refreshWatchdog = setInterval(() => {
+      if (isDisposedRef.current) return
+      if (document.visibilityState !== 'visible') return
+      requestRefresh()
+    }, 5000)
 
     // Refresh terminal when browser tab regains focus/visibility
     // This fixes blank terminal issues after tab switching or window focus loss
@@ -336,6 +375,13 @@ const XTerminal = forwardRef<XTerminalHandle, XTerminalProps>(({ className, onDa
       if (resizeTimeout) {
         clearTimeout(resizeTimeout)
       }
+      clearInterval(cursorHeartbeat)
+      clearInterval(refreshWatchdog)
+      if (refreshRafRef.current !== null) {
+        cancelAnimationFrame(refreshRafRef.current)
+        refreshRafRef.current = null
+      }
+      requestRefreshRef.current = null
       resizeObserver.disconnect()
       container?.removeEventListener('click', showCursor)
       textarea?.removeEventListener('focus', showCursor)

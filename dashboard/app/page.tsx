@@ -144,6 +144,25 @@ export default function Dashboard() {
   const selectedAgentRef = useRef<string | null>(null)
   const activeSessionIdRef = useRef<string | null>(null)
   const joinSessionRef = useRef<((sessionId: string) => void) | null>(null)
+  const pendingTerminalOutputRef = useRef<Array<{ sessionId: string; agent: string; data: string }>>([])
+
+  const flushPendingTerminalOutput = useCallback(() => {
+    if (!xtermRef.current || !activeSessionIdRef.current || !selectedAgentRef.current) return
+
+    const sessionId = activeSessionIdRef.current
+    const agent = selectedAgentRef.current
+    const remaining: Array<{ sessionId: string; agent: string; data: string }> = []
+
+    for (const chunk of pendingTerminalOutputRef.current) {
+      if (chunk.sessionId === sessionId && chunk.agent === agent) {
+        xtermRef.current.write(chunk.data)
+      } else {
+        remaining.push(chunk)
+      }
+    }
+
+    pendingTerminalOutputRef.current = remaining
+  }, [])
 
   // Keep refs in sync
   useEffect(() => {
@@ -193,7 +212,8 @@ export default function Dashboard() {
         agent: selectedAgentRef.current
       })
     }
-  }, [])
+    flushPendingTerminalOutput()
+  }, [flushPendingTerminalOutput])
 
   // Handle terminal resize - notify backend of new size
   const handleTerminalResize = useCallback((cols: number, rows: number) => {
@@ -748,6 +768,13 @@ export default function Dashboard() {
       const hasRef = !!xtermRef.current
       if (isMatch && hasRef) {
         xtermRef.current!.write(data)
+      } else if (isMatch) {
+        pendingTerminalOutputRef.current.push({ sessionId, agent, data })
+        // Keep queue bounded to avoid unbounded memory if terminal never mounts.
+        if (pendingTerminalOutputRef.current.length > 500) {
+          pendingTerminalOutputRef.current = pendingTerminalOutputRef.current.slice(-500)
+        }
+        console.warn('[Dashboard] agent_output buffered (terminal not ready)')
       } else {
         console.warn('[Dashboard] agent_output DROPPED', { isMatch, hasRef })
       }
