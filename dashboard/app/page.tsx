@@ -452,13 +452,14 @@ export default function Dashboard() {
   }, [joinSession])
 
   // Create a new session/project
-  const handleCreateSession = useCallback((projectDir: string, projectName: string, agents: string[]) => {
+  const handleCreateSession = useCallback((projectDir: string, projectName: string, agents: string[], options: { skipPermissions: boolean } = { skipPermissions: false }) => {
     if (!socketRef.current) return
 
     socketRef.current.emit('create_session', {
       projectDir,
       name: projectName,
-      agents
+      agents,
+      skipPermissions: options.skipPermissions
     }, (result: { success: boolean; session?: Session; error?: string }) => {
       if (result.success && result.session) {
         setShowProjectPicker(false)

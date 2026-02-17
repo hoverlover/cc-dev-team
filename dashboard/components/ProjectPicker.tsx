@@ -22,7 +22,7 @@ interface ProjectPickerProps {
   socket: Socket | null
   isOpen: boolean
   onClose: () => void
-  onSelectProject: (projectDir: string, projectName: string, agents: string[]) => void
+  onSelectProject: (projectDir: string, projectName: string, agents: string[], options: { skipPermissions: boolean }) => void
 }
 
 // All agents are launched by default - PM decides who to involve based on the task
@@ -35,6 +35,7 @@ export default function ProjectPicker({ socket, isOpen, onClose, onSelectProject
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [projectName, setProjectName] = useState('')
+  const [skipPermissions, setSkipPermissions] = useState(false)
   const [highlightedIndex, setHighlightedIndex] = useState<number>(-1)
   const listRef = useRef<HTMLDivElement>(null)
 
@@ -108,7 +109,7 @@ export default function ProjectPicker({ socket, isOpen, onClose, onSelectProject
 
   const handleSelectProject = () => {
     if (loadedPath && projectName) {
-      onSelectProject(loadedPath, projectName, ALL_AGENTS)
+      onSelectProject(loadedPath, projectName, ALL_AGENTS, { skipPermissions })
     }
   }
 
@@ -230,12 +231,26 @@ export default function ProjectPicker({ socket, isOpen, onClose, onSelectProject
           <div className={styles.selectedPath}>
             <strong>Selected:</strong> {loadedPath || 'None'}
           </div>
+          <label className={`${styles.dangerOption} ${skipPermissions ? styles.dangerOptionActive : ''}`}>
+            <input
+              type="checkbox"
+              checked={skipPermissions}
+              onChange={e => setSkipPermissions(e.target.checked)}
+              className={styles.dangerCheckbox}
+            />
+            <div>
+              <span className={styles.dangerLabel}>Skip permission prompts</span>
+              <span className={styles.dangerDescription}>
+                Agents will not ask for permission before executing tools. Use only on trusted projects.
+              </span>
+            </div>
+          </label>
           <div className={styles.actions}>
             <button className={styles.cancelButton} onClick={onClose}>
               Cancel
             </button>
             <button
-              className={styles.selectButton}
+              className={`${styles.selectButton} ${skipPermissions ? styles.selectButtonDanger : ''}`}
               onClick={handleSelectProject}
               disabled={!loadedPath || !projectName}
             >

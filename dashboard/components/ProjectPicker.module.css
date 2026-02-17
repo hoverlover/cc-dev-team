@@ -348,3 +348,49 @@
   opacity: 0.4;
   cursor: not-allowed;
 }
+
+.selectButtonDanger {
+  background: var(--error);
+}
+
+.selectButtonDanger:hover:not(:disabled) {
+  background: #dc2626;
+}
+
+/* ===== Danger Option ===== */
+.dangerOption {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.625rem;
+  padding: 0.625rem 0.75rem;
+  border-radius: var(--radius-md);
+  border: 1px solid transparent;
+  margin-bottom: 0.75rem;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.dangerOptionActive {
+  border-color: var(--error);
+  background: rgba(239, 68, 68, 0.08);
+}
+
+.dangerCheckbox {
+  margin-top: 0.125rem;
+  accent-color: var(--error);
+  cursor: pointer;
+}
+
+.dangerLabel {
+  display: block;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+.dangerDescription {
+  display: block;
+  font-size: 0.6875rem;
+  color: var(--text-muted);
+  margin-top: 0.125rem;
+}
