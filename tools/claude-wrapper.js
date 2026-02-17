@@ -17,6 +17,7 @@ import { join, dirname } from 'path'
 import { execSync } from 'child_process'
 import { fileURLToPath } from 'url'
 import { RingBuffer, InputTracker, StatusStateMachine } from './lib/index.js'
+import { buildPermissionArgs } from './lib/buildPermissionArgs.js'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const LOG_DIR = join(__dirname, '..', 'logs')
@@ -44,6 +45,7 @@ let agentId = process.env.AGENT_ROLE || null
 let agentDir = process.env.PROJECT_DIR || process.cwd()  // Agent runs in project directory
 let instanceDir = null
 let headless = process.env.HEADLESS === 'true'
+let skipPermissions = process.env.SKIP_PERMISSIONS === 'true'
 let sessionId = process.env.SESSION_ID || 'default'
 let agentSystemPromptPath = process.env.AGENT_SYSTEM_PROMPT || null  // Path to agent's system-prompt.md
 let agentSettingsPath = process.env.AGENT_SETTINGS || null  // Path to agent's settings.json
@@ -358,10 +360,10 @@ if (pluginsDir) {
   }
 }
 
-// Set permission mode to acceptEdits for autonomous operation
-// This auto-accepts file edits while still prompting for potentially dangerous operations
-fullClaudeArgs.push('--permission-mode', 'acceptEdits')
-debug('Using permission mode: acceptEdits')
+// Set permission mode: skip all prompts if requested, otherwise acceptEdits
+const permArgs = buildPermissionArgs(skipPermissions)
+fullClaudeArgs.push(...permArgs)
+debug(`Using permission args: ${permArgs.join(' ')}`)
 
 // Create PTY
 // Add tools directory to PATH so agents can use short command names (send-msg, get-roster)
