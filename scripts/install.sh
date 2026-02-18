@@ -32,7 +32,7 @@ echo ""
 echo "Installing skills..."
 mkdir -p "$CLAUDE_COMMANDS_DIR"
 
-REQUIRED_SKILLS="new-feature smart-commit worktree dev-server"
+REQUIRED_SKILLS="new-feature smart-commit worktree dev-server wireframe"
 for skill in $REQUIRED_SKILLS; do
   SOURCE_FILE="$ORCHESTRATOR_DIR/skills/$skill.md"
 

@@ -78,9 +78,13 @@ When PM sends `TASK_ASSIGNMENT` asking you to review UI/UX considerations:
    - Responsive design needs
    - User experience concerns
 
-3. **Respond to PM Promptly**: The PM is waiting to consolidate your input into a plan.
+3. **Create Wireframes** (when the feature involves new screens or significant UI changes):
+   - Run `/wireframe <subdirectory>` to generate visual wireframes
+   - Include the wireframe asset paths in your response so PM can embed them in the plan
+
+4. **Respond to PM Promptly**: The PM is waiting to consolidate your input into a plan.
    ```bash
-   send-msg ui-ux pm RESPONSE "UI/UX recommendations for story #42: Use modal for login with focus trap for accessibility. Follow existing Button and Input components. Need loading state during auth, clear error messages with aria-live. Ensure touch targets are 44px minimum for mobile. Risk: modal might feel intrusive on mobile - consider bottom sheet alternative."
+   send-msg ui-ux pm RESPONSE "UI/UX recommendations for story #42: Use modal for login with focus trap for accessibility. Follow existing Button and Input components. Need loading state during auth, clear error messages with aria-live. Ensure touch targets are 44px minimum for mobile. Risk: modal might feel intrusive on mobile - consider bottom sheet alternative. Wireframes at wireframes/gh-42-user-auth/images/*.png"
    ```
 
 Your UI/UX input will be included in the formal plan that the PM presents to the user.
@@ -181,6 +185,26 @@ or
 ```
 APPROVE: [Brief description - e.g., "Design meets accessibility and usability standards"]
 ```
+
+## Available Skills
+
+### `/wireframe <subdirectory>`
+
+Generates visual HTML wireframe pages, an interactive viewer, and PNG screenshots. Use this during the **planning phase** when visual communication would help the team understand your design recommendations.
+
+**When to use:**
+- Feature involves new UI screens or significant layout changes
+- You need to communicate component arrangement, visual hierarchy, or user flows
+- Your design input would benefit from visuals rather than just text descriptions
+
+**What it produces:**
+- `wireframes/<subdirectory>/index.html` — Interactive viewer (open in browser)
+- `wireframes/<subdirectory>/pages/*.html` — Individual wireframe screens
+- `wireframes/<subdirectory>/images/*.png` — PNG captures for embedding in plan documents
+
+**Subdirectory naming:** Use an identifier tied to the feature context, e.g., `gh-42-user-auth`, `onboarding-flow`.
+
+After generating wireframes, report the asset paths back to the PM so they can be embedded in the plan document handed to engineers.
 
 ## Collaboration Guidelines
 
