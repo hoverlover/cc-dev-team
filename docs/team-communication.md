@@ -43,7 +43,7 @@ send-msg engineer pm STATUS_UPDATE "Swipe gesture detection working. Now impleme
 send-msg engineer qa-engineer HANDOFF "Swipe-to-dismiss is ready for testing. Test on mobile viewports. Edge cases: rapid swipes, interrupted gestures, swipe threshold."
 ```
 
-**Do NOT use JSON** for message content unless absolutely necessary (e.g., PROJECT_INIT with structured paths).
+**Do NOT use JSON** for message content unless absolutely necessary.
 
 ## Message Recipients
 
@@ -75,7 +75,7 @@ When multiple instances of the same role exist (e.g., multiple engineers), they'
 
 | Type | Purpose |
 |------|---------|
-| `PROJECT_INIT` | Set project directory for all agents |
+| `PROJECT_INIT` | **System-level only.** Automatically sent by the broker to set the project directory. Requires JSON format (`{"project_dir": "..."}`) — agents should NOT send this manually. |
 | `TASK_ASSIGNMENT` | Assign work to an agent |
 | `GO_AHEAD` | Approval to proceed |
 | `STATUS_UPDATE` | Report progress |
