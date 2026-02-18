@@ -711,8 +711,12 @@ io.on('connection', (socket) => {
 
     // Handle PROJECT_INIT specially
     if (type === 'PROJECT_INIT') {
-      session.project = typeof content === 'string' ? JSON.parse(content) : content
-      io.to(`session:${session.id}:dashboard`).emit('project', { sessionId: session.id, project: session.project })
+      try {
+        session.project = typeof content === 'string' ? JSON.parse(content) : content
+        io.to(`session:${session.id}:dashboard`).emit('project', { sessionId: session.id, project: session.project })
+      } catch (err) {
+        console.warn(`[Broker] [${session.id}] Ignoring PROJECT_INIT with invalid JSON from ${agentRole}:`, err.message)
+      }
     }
 
     // Route message within session

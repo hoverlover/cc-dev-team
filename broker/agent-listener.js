@@ -56,12 +56,15 @@ socket.on('message', (message) => {
 
   // Handle PROJECT_INIT specially
   if (message.message_type === 'PROJECT_INIT') {
-    const content = typeof message.content === 'string'
-      ? JSON.parse(message.content)
-      : message.content
-
-    writeFileSync(PROJECT_FILE, content.project_dir)
-    // Silent - project context set
+    try {
+      const content = typeof message.content === 'string'
+        ? JSON.parse(message.content)
+        : message.content
+      writeFileSync(PROJECT_FILE, content.project_dir)
+      // Silent - project context set
+    } catch (err) {
+      console.warn(`[AgentListener] Ignoring PROJECT_INIT with invalid JSON:`, err.message)
+    }
   }
 
   // Append to pending messages file

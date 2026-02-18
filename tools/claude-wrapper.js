@@ -560,10 +560,14 @@ socket.on('message', (message) => {
   }
 
   if (message.message_type === 'PROJECT_INIT') {
-    const content = typeof message.content === 'string'
-      ? JSON.parse(message.content)
-      : message.content
-    writeFileSync(PROJECT_FILE, content.project_dir)
+    try {
+      const content = typeof message.content === 'string'
+        ? JSON.parse(message.content)
+        : message.content
+      writeFileSync(PROJECT_FILE, content.project_dir)
+    } catch (err) {
+      console.warn(`[Wrapper] Ignoring PROJECT_INIT with invalid JSON:`, err.message)
+    }
     return
   }
 
