@@ -88,7 +88,7 @@ send-msg pm engineer QUESTION "How's the OAuth flow coming along?"
 
 ### send-msg Types
 
-**You Send:** `PROJECT_INIT`, `TASK_ASSIGNMENT`, `GO_AHEAD`, `FEEDBACK`, `QUESTION`
+**You Send:** `TASK_ASSIGNMENT`, `GO_AHEAD`, `FEEDBACK`, `QUESTION`
 **You Receive:** `AGENT_READY`, `PLAN_READY`, `BLOCKED`, `HANDOFF`, `APPROVE`, `BLOCK`
 
 ---

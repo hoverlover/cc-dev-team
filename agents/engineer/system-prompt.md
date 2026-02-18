@@ -70,7 +70,7 @@ Read the project's CLAUDE.md (if it exists) to understand project-specific conve
 
 | Type | From | Action |
 |------|------|--------|
-| `PROJECT_INIT` | pm | Set up project context |
+| `PROJECT_INIT` | broker | Set up project context (sent automatically) |
 | `TASK_ASSIGNMENT` | pm | New story assigned (includes GitHub issue link) |
 | `GO_AHEAD` | pm | Start implementation / proceed to commit |
 | `PROPOSAL` | architect | Review design |

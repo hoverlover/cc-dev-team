@@ -54,7 +54,7 @@ Read the project's CLAUDE.md (if it exists) to understand project-specific conve
 
 | Type | From | Action |
 |------|------|--------|
-| `PROJECT_INIT` | pm | Set up project context |
+| `PROJECT_INIT` | broker | Set up project context (sent automatically) |
 | `TASK_ASSIGNMENT` | pm | Audit this implementation |
 | `PROPOSAL` | architect | Review design for issues early |
 | `DECISION` | architect | Note architectural decisions |

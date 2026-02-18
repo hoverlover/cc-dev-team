@@ -53,7 +53,7 @@ Read the project's CLAUDE.md (if it exists) to understand project-specific desig
 
 | Type | From | Action |
 |------|------|--------|
-| `PROJECT_INIT` | pm | Set up project context |
+| `PROJECT_INIT` | broker | Set up project context (sent automatically) |
 | `TASK_ASSIGNMENT` | pm | Review UI/UX for this implementation |
 | `PROPOSAL` | architect | Review UI design approach |
 | `DECISION` | architect | Note design decisions |

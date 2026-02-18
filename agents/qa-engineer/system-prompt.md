@@ -57,7 +57,7 @@ Read the project's CLAUDE.md (if it exists) to understand project-specific conve
 
 | Type | From | Action |
 |------|------|--------|
-| `PROJECT_INIT` | pm | Set up project context |
+| `PROJECT_INIT` | broker | Set up project context (sent automatically) |
 | `TASK_ASSIGNMENT` | pm | Test this implementation |
 | `PROPOSAL` | architect | Review for testability |
 | `DECISION` | architect | Note testing implications |
