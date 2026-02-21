@@ -11,47 +11,49 @@ A multi-agent orchestration system that enables teams of AI agents to collaborat
 
 ## Features
 
-- **Multi-Agent Collaboration** - Specialized AI agents work together: PM, Architect, Engineer, QA, UI/UX Expert, and Code Auditor
+- **Multi-Agent Collaboration** - Specialized AI agents work together: PM, Architect, Engineer, QA, UI/UX Expert, Code Auditor, and Docs Auditor
 - **Real-Time Dashboard** - Monitor all agents, view their terminals, and watch team communication in real-time
-- **Headless Agent Mode** - Sub-agents run in headless mode, controllable from the web dashboard
+- **Headless Agent Mode** - All agents run in headless mode, controllable from the web dashboard
 - **Persistent Message History** - All inter-agent communication stored in SQLite for debugging and replay
 - **Extensible Architecture** - Easy to add new agent roles and customize behavior
 - **Claude Code Integration** - Each agent is a full Claude Code session with access to all its capabilities
+- **Auto-Updating Status Bar** - Each agent session has a status bar that describes the current work being done, and links to the relevant GitHub issue when work is issue-related
+- **File Linking** - Click on any file path mentioned in agent terminal output and it opens in the host machine's default editor
+- **Multi-Project Tabs** - Work on multiple projects simultaneously with tabbed sessions, all in the same dashboard interface
 
 ## How It Works
 
 ```
-┌─────────────────────────────────────────────────────────────────────────┐
-│                            HUMAN DEVELOPER                              │
-│                              (Dashboard)                                │
-└─────────────────────────────────────────────────────────────────────────┘
-                                    │
-                                    ▼
-                          ┌───────────────────┐
-                          │  PRODUCT MANAGER  │
-                          │   (Claude Code)   │
-                          │                   │
-                          │ • Human interface │
-                          │ • Delegates work  │
-                          │ • Approves plans  │
-                          └───────────────────┘
-                                    │
-      ┌───────────┬─────────────────┼─────────────────┬───────────┐
-      │           │                 │                 │           │
-      ▼           ▼                 ▼                 ▼           ▼
-┌───────────┐┌───────────┐┌─────────────────┐┌───────────┐┌───────────┐
-│ ARCHITECT ││ ENGINEER  ││   QA ENGINEER   ││   UI/UX   ││   CODE    │
-│           ││           ││                 ││  EXPERT   ││  AUDITOR  │
-│  Design   ││ Implement ││ Test & Verify   ││  Design   ││  Review   │
-│           ││           ││                 ││  Review   ││  Quality  │
-└───────────┘└───────────┘└─────────────────┘└───────────┘└───────────┘
-      │           │                 │                 │           │
-      └───────────┴─────────────────┼─────────────────┴───────────┘
-                                    │
-                          ┌───────────────────┐
-                          │   MESSAGE BROKER  │
-                          │    (Socket.io)    │
-                          └───────────────────┘
+                    ┌───────────────────────────────────────────────────────────────┐
+                    │                       HUMAN DEVELOPER                         │
+                    │                         (Dashboard)                           │
+                    └───────────────────────────────────────────────────────────────┘
+                                                   │
+                                                   ▼
+                                         ┌───────────────────┐
+                                         │  PRODUCT MANAGER  │
+                                         │   (Claude Code)   │
+                                         │                   │
+                                         │ • Human interface │
+                                         │ • Delegates work  │
+                                         │ • Approves plans  │
+                                         └───────────────────┘
+                                                   │
+        ┌────────────────┬────────────────┬────────┴───────┬────────────────┬────────────────┐
+        │                │                │                │                │                │
+        ▼                ▼                ▼                ▼                ▼                ▼
+┌───────────────┐┌───────────────┐┌───────────────┐┌───────────────┐┌───────────────┐┌───────────────┐
+│   ARCHITECT   ││   ENGINEER    ││  QA ENGINEER  ││  UI/UX EXPERT ││ CODE AUDITOR  ││ DOCS AUDITOR  │
+│               ││               ││               ││               ││               ││               │
+│    Design     ││  Implement    ││ Test & Verify ││ Design Review ││  Code Review  ││  Doc Quality  │
+└───────────────┘└───────────────┘└───────────────┘└───────────────┘└───────────────┘└───────────────┘
+        │                │                │                │                │                │
+        └────────────────┴────────────────┴────────┬───────┴────────────────┴────────────────┘
+                                                   │
+                                         ┌───────────────────┐
+                                         │   MESSAGE BROKER  │
+                                         │    (Socket.io)    │
+                                         └───────────────────┘
 ```
 
 ## Prerequisites
@@ -161,7 +163,7 @@ Each agent is a full Claude Code session with complete context of the project an
 ## Dashboard
 
 <!-- SCREENSHOT: Dashboard showing messages view -->
-![Messages View](docs/images/messages-view.png)
+![Dashboard](docs/images/dashboard-screenshot.png)
 
 The web dashboard provides:
 
@@ -179,6 +181,7 @@ The web dashboard provides:
 | **QA Engineer** | Quality | Testing, verification, bug reporting |
 | **Code Auditor** | Review | Security review, code quality, best practices |
 | **UI/UX Expert** | Design | User experience, interface design, accessibility |
+| **Docs Auditor** | Documentation | Documentation quality gate, drift detection, doc updates |
 
 ## Communication Protocol
 
@@ -200,7 +203,8 @@ All messages are persisted to SQLite for history and debugging.
 6. **Engineer** implements the feature
 7. **QA** tests and verifies
 8. **Code Auditor** reviews for quality/security
-9. **PM** reports completion to human
+9. **Docs Auditor** verifies documentation
+10. **PM** reports completion to human
 
 ## Project Structure
 
@@ -212,14 +216,24 @@ cc-dev-team/
 │   ├── engineer/           # Software Engineer
 │   ├── qa-engineer/        # QA Engineer
 │   ├── code-auditor/       # Code Auditor
+│   ├── docs-auditor/       # Docs Auditor
 │   └── ui-ux/              # UI/UX Expert
 ├── broker/                 # Message broker (Socket.io server)
 ├── dashboard/              # Web dashboard (Next.js + TypeScript)
 ├── hooks/                  # Claude Code hooks for message notification
+├── installer/              # npm/bunx installer
 ├── scripts/                # Startup and utility scripts
+├── skills/                 # Agent workflow skills
+├── tests/                  # Test suite
 ├── tools/                  # Agent tools (send-msg, get-roster, etc.)
 ├── data/                   # SQLite database for messages
-└── logs/                   # Agent logs
+├── docs/                   # Documentation and images
+├── logs/                   # Agent logs
+├── start-orchestrator.sh   # Main entry point
+├── CLAUDE.md               # Project instructions
+├── vitest.config.js        # Test configuration
+├── package.json            # Package manifest
+└── bun.lock                # Dependency lockfile
 ```
 
 ## Configuration
@@ -255,6 +269,53 @@ Check which agents are online:
 ```bash
 get-roster
 ```
+
+### set-issue-bar
+
+Update the dashboard task display for an agent:
+
+```bash
+set-issue-bar 'Working on auth flow'
+set-issue-bar --issue 42
+```
+
+### spawn-agent
+
+Launch a new agent in the dashboard:
+
+```bash
+spawn-agent engineer
+spawn-agent qa-engineer
+```
+
+### sync-workspace
+
+Sync all agents to a worktree after switching branches:
+
+```bash
+sync-workspace engineer switch /path/to/worktree
+sync-workspace engineer remove /path/to/original/project
+```
+
+### rename-sessions
+
+Rename agent sessions for organization:
+
+```bash
+rename-sessions pm issue-num worktree-name
+```
+
+## Skills
+
+Agent workflow skills provide interactive, multi-step capabilities:
+
+| Skill | Used By | Purpose |
+|-------|---------|---------|
+| `/new-feature` | PM | Create GitHub issues with user stories |
+| `/smart-commit` | Engineer | Create logical atomic commits |
+| `/dev-server` | Engineer | Manage development servers |
+| `/worktree` | Engineer | Manage git worktrees |
+| `/wireframe` | UI/UX | Generate visual HTML wireframes |
 
 ## Troubleshooting
 
