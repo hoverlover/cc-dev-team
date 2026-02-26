@@ -7,7 +7,7 @@
  * The broker writes to the FIFO after inserting a message into SQLite.
  * Falls back to SQLite polling if the FIFO can't be created.
  *
- * Uses a PID lock file (/tmp/cc-dev-team/cc-poller-<agent-id>-<session-id>.lock) to prevent duplicate
+ * Uses a PID lock file (/tmp/cc-dev-team/poller-<agent-id>-<session-id>.lock) to prevent duplicate
  * pollers. If an existing poller is alive, this instance exits immediately.
  *
  * Usage:
@@ -59,8 +59,8 @@ mkdirSync(TEMP_DIR, { recursive: true })
 
 // PID lock file to prevent duplicate pollers
 // Include sessionId to avoid collisions between concurrent projects
-const lockFile = `${TEMP_DIR}/cc-poller-${agentId}-${sessionId}.lock`
-const fifoPath = `${TEMP_DIR}/cc-wake-${agentId}-${sessionId}`
+const lockFile = `${TEMP_DIR}/poller-${agentId}-${sessionId}.lock`
+const fifoPath = `${TEMP_DIR}/wake-${agentId}-${sessionId}`
 
 function isPollerAlive(pid) {
   try {

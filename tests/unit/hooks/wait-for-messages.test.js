@@ -10,8 +10,8 @@ const TEST_DIR = join(tmpdir(), `wait-for-messages-test-${process.pid}`)
 const DB_PATH = join(TEST_DIR, 'data', 'messages.db')
 const TEST_SESSION_ID = 'test-session'
 const TEMP_DIR = '/tmp/cc-dev-team'
-const LOCK_FILE = `${TEMP_DIR}/cc-poller-engineer-1-${TEST_SESSION_ID}.lock`
-const FIFO_PATH = `${TEMP_DIR}/cc-wake-engineer-1-${TEST_SESSION_ID}`
+const LOCK_FILE = `${TEMP_DIR}/poller-engineer-1-${TEST_SESSION_ID}.lock`
+const FIFO_PATH = `${TEMP_DIR}/wake-engineer-1-${TEST_SESSION_ID}`
 
 function createTestDb() {
   mkdirSync(join(TEST_DIR, 'data'), { recursive: true })

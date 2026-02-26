@@ -111,7 +111,7 @@ try {
     db.exec('COMMIT')
 
     // Check if a poller is already running via PID lock file
-    const lockFile = `/tmp/cc-dev-team/cc-poller-${agentId}-${sessionId}.lock`
+    const lockFile = `/tmp/cc-dev-team/poller-${agentId}-${sessionId}.lock`
     let pollerAlive = false
     if (existsSync(lockFile)) {
       try {

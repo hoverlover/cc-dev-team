@@ -767,7 +767,7 @@ io.on('connection', (socket) => {
       wakeTargets = [to]
     }
     for (const target of wakeTargets) {
-      const fifoPath = join(TEMP_DIR, `cc-wake-${target}-${session.id}`)
+      const fifoPath = join(TEMP_DIR, `wake-${target}-${session.id}`)
       if (existsSync(fifoPath)) {
         fsOpen(fifoPath, fsConstants.O_WRONLY | fsConstants.O_NONBLOCK, (err, fd) => {
           if (err) return // ENXIO (no reader) or ENOENT (no fifo) — ignore
@@ -868,7 +868,7 @@ io.on('connection', (socket) => {
         console.error(`[Broker] Failed to insert RENAME_SESSION for ${target}:`, err.message)
       }
       // Wake the agent's FIFO poller
-      const fifoPath = join(TEMP_DIR, `cc-wake-${target}-${session.id}`)
+      const fifoPath = join(TEMP_DIR, `wake-${target}-${session.id}`)
       if (existsSync(fifoPath)) {
         fsOpen(fifoPath, fsConstants.O_WRONLY | fsConstants.O_NONBLOCK, (err, fd) => {
           if (err) return
@@ -963,7 +963,7 @@ io.on('connection', (socket) => {
         console.error(`[Broker] Failed to insert WORKSPACE_SYNC for ${target}:`, err.message)
       }
       // Wake the agent's FIFO poller
-      const fifoPath = join(TEMP_DIR, `cc-wake-${target}-${session.id}`)
+      const fifoPath = join(TEMP_DIR, `wake-${target}-${session.id}`)
       if (existsSync(fifoPath)) {
         fsOpen(fifoPath, fsConstants.O_WRONLY | fsConstants.O_NONBLOCK, (err, fd) => {
           if (err) return
@@ -1068,8 +1068,8 @@ io.on('connection', (socket) => {
       })
 
       // Clean up agent's temp files (FIFO + lock) as safety net for orphaned pollers
-      try { unlinkSync(join(TEMP_DIR, `cc-wake-${agentRole}-${session.id}`)) } catch { /* ignore */ }
-      try { unlinkSync(join(TEMP_DIR, `cc-poller-${agentRole}-${session.id}.lock`)) } catch { /* ignore */ }
+      try { unlinkSync(join(TEMP_DIR, `wake-${agentRole}-${session.id}`)) } catch { /* ignore */ }
+      try { unlinkSync(join(TEMP_DIR, `poller-${agentRole}-${session.id}.lock`)) } catch { /* ignore */ }
 
       console.log(`[Broker] ${agentRole} disconnected from session ${session.id} - reason: ${reason}`)
     }

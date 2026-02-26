@@ -244,7 +244,7 @@ describe('hooks/check-messages.js', () => {
   })
 
   describe('Stop hook', () => {
-    const lockFile = '/tmp/cc-dev-team/cc-poller-engineer-1-test-session.lock'
+    const lockFile = '/tmp/cc-dev-team/poller-engineer-1-test-session.lock'
 
     afterEach(() => {
       try { unlinkSync(lockFile) } catch { /* ignore */ }
