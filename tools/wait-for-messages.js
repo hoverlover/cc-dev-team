@@ -14,8 +14,9 @@
  *   wait-for-messages --agent <agent-id> --session <session-id> [--timeout <seconds>]
  *
  * Environment variables (fallbacks):
- *   AGENT_ID         - Agent ID
- *   SESSION_ID       - Session ID
+ *   AGENT_ID           - Agent ID
+ *   BROKER_SESSION_ID  - Broker's stable session ID (preferred)
+ *   SESSION_ID         - Fallback session ID (may change on /resume)
  *   ORCHESTRATOR_DIR - Path to orchestrator root (contains data/messages.db)
  */
 
@@ -30,7 +31,7 @@ import { execSync } from 'node:child_process'
 // Parse arguments
 const args = process.argv.slice(2)
 let agentId = process.env.AGENT_ID
-let sessionId = process.env.SESSION_ID
+let sessionId = process.env.BROKER_SESSION_ID || process.env.SESSION_ID
 let timeoutSeconds = 300
 
 for (let i = 0; i < args.length; i++) {

@@ -19,7 +19,7 @@ import { io } from 'socket.io-client'
 import { execSync } from 'child_process'
 
 const BROKER_URL = process.env.BROKER_URL || 'http://localhost:3100'
-const SESSION_ID = process.env.SESSION_ID || 'default'
+const SESSION_ID = process.env.BROKER_SESSION_ID || process.env.SESSION_ID || 'default'
 
 const [,, from, issueNum, worktreeName, issueTitle, issueUrl] = process.argv
 

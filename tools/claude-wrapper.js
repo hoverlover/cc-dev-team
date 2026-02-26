@@ -46,7 +46,7 @@ let agentDir = process.env.PROJECT_DIR || process.cwd()  // User's project direc
 let instanceDir = null
 let headless = process.env.HEADLESS === 'true'
 let skipPermissions = process.env.SKIP_PERMISSIONS === 'true'
-let sessionId = process.env.SESSION_ID || 'default'
+let sessionId = process.env.BROKER_SESSION_ID || process.env.SESSION_ID || 'default'
 let agentSystemPromptPath = process.env.AGENT_SYSTEM_PROMPT || null  // Path to agent's system-prompt.md
 let agentSettingsPath = process.env.AGENT_SETTINGS || null  // Path to agent's settings.json
 let pluginsDir = process.env.PLUGINS_DIR || null  // Path to orchestrator plugins directory
@@ -378,6 +378,7 @@ const ptyProcess = pty.spawn(claudePath, fullClaudeArgs, {
     AGENT_ID: agentId,
     INSTANCE_DIR: instanceDir,
     SESSION_ID: sessionId,
+    BROKER_SESSION_ID: sessionId,
     BROKER_URL: BROKER_URL,
     ORCHESTRATOR_DIR: join(__dirname, '..'),
     TERM: 'xterm-256color'

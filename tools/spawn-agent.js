@@ -14,7 +14,7 @@
 import { io } from 'socket.io-client'
 
 const BROKER_URL = process.env.BROKER_URL || 'http://localhost:3100'
-const SESSION_ID = process.env.SESSION_ID
+const SESSION_ID = process.env.BROKER_SESSION_ID || process.env.SESSION_ID
 const AGENT_ROLE = process.env.AGENT_ROLE || 'pm'
 
 const [,, role] = process.argv

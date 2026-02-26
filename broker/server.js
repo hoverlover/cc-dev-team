@@ -203,6 +203,7 @@ function spawnAgent(session, role) {
       AGENT_ROLE: actualRole,
       BROKER_URL: `http://localhost:${PORT}`,
       SESSION_ID: session.id,
+      BROKER_SESSION_ID: session.id,
       PROJECT_DIR: session.projectDir,
       ORCHESTRATOR_DIR: ORCHESTRATOR_DIR,
       PLUGINS_DIR: PLUGINS_DIR,

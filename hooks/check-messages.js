@@ -9,8 +9,9 @@
  * Hook output uses camelCase field names (e.g., hookEventName, additionalContext).
  *
  * Environment variables:
- *   AGENT_ID       - This agent's ID (e.g., "engineer-1")
- *   SESSION_ID     - Current session ID
+ *   AGENT_ID            - This agent's ID (e.g., "engineer-1")
+ *   BROKER_SESSION_ID   - Broker's stable session ID (preferred)
+ *   SESSION_ID          - Fallback session ID (may change on /resume)
  *   ORCHESTRATOR_DIR - Path to orchestrator root (contains data/messages.db)
  */
 
@@ -19,7 +20,7 @@ import { join } from 'node:path'
 import { existsSync, readFileSync } from 'node:fs'
 
 const agentId = process.env.AGENT_ID
-const sessionId = process.env.SESSION_ID
+const sessionId = process.env.BROKER_SESSION_ID || process.env.SESSION_ID
 const orchestratorDir = process.env.ORCHESTRATOR_DIR
 
 if (!agentId || !sessionId || !orchestratorDir) {

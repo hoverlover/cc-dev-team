@@ -9,7 +9,7 @@
 import { io } from 'socket.io-client'
 
 const BROKER_URL = process.env.BROKER_URL || 'http://localhost:3100'
-const SESSION_ID = process.env.SESSION_ID
+const SESSION_ID = process.env.BROKER_SESSION_ID || process.env.SESSION_ID
 
 if (!SESSION_ID) {
   console.error('SESSION_ID environment variable is required')
