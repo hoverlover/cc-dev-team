@@ -110,14 +110,6 @@ mkdirSync(instanceDir, { recursive: true })
 const BROKER_URL = process.env.BROKER_URL || 'http://localhost:3100'
 const PROJECT_FILE = join(instanceDir, 'project-dir')
 
-// Message queue for team message injection
-const messageQueue = []
-
-// Track messages pending read confirmation (waiting for echo in terminal output)
-const pendingReadConfirmation = []
-const INJECTED_MESSAGE_MARKER = 'NEW TEAM MESSAGE'
-let suppressInjectedLine = false
-
 // Configuration via environment variables
 const STATUS_IDLE_TIMEOUT_MS = parseInt(process.env.STATUS_IDLE_TIMEOUT_MS) || 8000
 const STATUS_DEBOUNCE_MS = parseInt(process.env.STATUS_DEBOUNCE_MS) || 100
@@ -365,6 +357,13 @@ const permArgs = buildPermissionArgs(skipPermissions)
 fullClaudeArgs.push(...permArgs)
 debug(`Using permission args: ${permArgs.join(' ')}`)
 
+// Add initial prompt so agents auto-start the message poller on boot.
+// The positional prompt argument makes Claude execute this on startup,
+// eliminating the need for humans to type "check your messages" manually.
+const initialPrompt = `You are online. Start the message poller by running: wait-for-messages --agent $AGENT_ID --session $SESSION_ID as a background Bash task (run_in_background=true). Then wait for messages.`
+fullClaudeArgs.push('--', initialPrompt)
+debug(`Initial prompt set for auto-poller bootstrap`)
+
 // Create PTY
 // Add tools directory to PATH so agents can use short command names (send-msg, get-roster)
 const toolsPath = __dirname
@@ -380,6 +379,7 @@ const ptyProcess = pty.spawn(claudePath, fullClaudeArgs, {
     INSTANCE_DIR: instanceDir,
     SESSION_ID: sessionId,
     BROKER_URL: BROKER_URL,
+    ORCHESTRATOR_DIR: join(__dirname, '..'),
     TERM: 'xterm-256color'
   }
 })
@@ -387,10 +387,6 @@ const ptyProcess = pty.spawn(claudePath, fullClaudeArgs, {
 const tracker = new InputTracker(INPUT_DEBUG ? {
   debug: (msg) => debug(`[InputTracker] ${msg}`)
 } : undefined)
-let lastInjected = 0
-const COOLDOWN_MS = 10000
-const CHECK_INTERVAL_MS = 5000
-const IDLE_TIMEOUT_MS = 2000
 
 // Initialize status tracking with state machine
 const outputBuffer = new RingBuffer(STATUS_BUFFER_SIZE)
@@ -470,29 +466,14 @@ ptyProcess.onData((data) => {
   }
 
   // Accumulate output in ring buffer for status detection
-  const dataForBuffer = stripInjectedOutput(data)
-  if (dataForBuffer) {
-    outputBuffer.append(dataForBuffer)
-  }
-
-  // Check if we see our injected message echoed back - confirms delivery
-  if (data.includes(INJECTED_MESSAGE_MARKER) && pendingReadConfirmation.length > 0) {
-    debug('Detected message echo in output - confirming delivery')
-    // Mark all pending as confirmed (they were displayed)
-    for (const pending of pendingReadConfirmation) {
-      if (socket.connected) {
-        socket.emit('mark_read', { messageIds: pending.ids })
-      }
-    }
-    pendingReadConfirmation.length = 0  // Clear the array
-  }
+  outputBuffer.append(data)
 
   // Always send to broker for dashboard
   if (socket.connected) {
     socket.emit('agent_output', { data })
 
     // Detect state transitions using buffered output
-    if (stateMachine && dataForBuffer) {
+    if (stateMachine) {
       detectStateTransition(outputBuffer, stateMachine)
     }
   }
@@ -559,6 +540,7 @@ socket.on('message', (message) => {
     return
   }
 
+  // PROJECT_INIT still handled specially (writes project-dir file)
   if (message.message_type === 'PROJECT_INIT') {
     try {
       const content = typeof message.content === 'string'
@@ -571,188 +553,16 @@ socket.on('message', (message) => {
     return
   }
 
-  debug(`Received message from ${message.from_agent}: ${message.message_type}`)
-  messageQueue.push(message)
+  // Just log — hooks and the background poller handle delivery.
+  // The message is already in SQLite (broker persisted it).
+  // If agent is active: PostToolUse hook will pick it up on next tool call.
+  // If agent is idle: background poller will detect it and wake the agent.
+  debug(`Message available from ${message.from_agent}: ${message.message_type} (delivery via hooks/poller)`)
 })
 
-// Handle session rename requests
-socket.on('rename_session', ({ issueNum, worktreeName }) => {
-  const sessionName = `${agentId}-${issueNum}-${worktreeName}`
-  debug(`Renaming session to: ${sessionName}`)
-  // Inject the rename command directly (bypasses message queue)
-  ptyProcess.write(`/rename ${sessionName}`)
-  setTimeout(() => {
-    ptyProcess.write('\r')
-  }, 150)
-})
-
-// Handle workspace sync requests (worktree changes)
-socket.on('workspace_sync', ({ path, action }) => {
-  debug(`Workspace sync: action=${action}, path=${path}`)
-  // Inject cd command to change directory
-  if (action === 'switch' && path) {
-    ptyProcess.write(`cd "${path}"`)
-    setTimeout(() => {
-      ptyProcess.write('\r')
-    }, 150)
-  } else if (action === 'remove' && path) {
-    // Switch back to the specified path (usually original project dir)
-    ptyProcess.write(`cd "${path}"`)
-    setTimeout(() => {
-      ptyProcess.write('\r')
-    }, 150)
-  }
-})
-
-// Message injection
-function inject(text) {
-  ptyProcess.write(text)
-  // Send Enter key after a short delay to ensure it's processed
-  // separately from the pasted text (outside bracketed paste context)
-  setTimeout(() => {
-    // Send carriage return (Enter key)
-    ptyProcess.write('\r')
-  }, 150)
-}
-
-function formatMessageForInjection(msg) {
-  let content = msg.content
-
-  // If content is an object, stringify it (backwards compatibility)
-  if (typeof content === 'object' && content !== null) {
-    content = JSON.stringify(content)
-  }
-
-  // Clean up for single-line injection
-  content = String(content).replace(/\n/g, ' ').replace(/\r/g, '')
-  return `[MESSAGE from ${msg.from_agent}] [${msg.message_type}]: ${content}`
-}
-
-function stripInjectedOutput(data) {
-  // Remove injected message line(s) from the state-detection buffer to avoid
-  // false positives on tool/prompt patterns.
-  if (data.includes(INJECTED_MESSAGE_MARKER)) {
-    const markerIndex = data.indexOf(INJECTED_MESSAGE_MARKER)
-    const before = data.slice(0, markerIndex)
-    const afterMarker = data.slice(markerIndex)
-    const lineEndIndex = afterMarker.search(/[\r\n]/)
-    if (lineEndIndex === -1) {
-      suppressInjectedLine = true
-      return before
-    }
-    suppressInjectedLine = false
-    return before + afterMarker.slice(lineEndIndex)
-  }
-
-  if (suppressInjectedLine) {
-    const lineEndIndex = data.search(/[\r\n]/)
-    if (lineEndIndex === -1) {
-      return ''
-    }
-    suppressInjectedLine = false
-    return data.slice(lineEndIndex)
-  }
-
-  return data
-}
-
-function checkAndInject() {
-  const timeSinceLastInject = Date.now() - lastInjected
-  const timeSinceLastKeystroke = Date.now() - tracker.lastKeystroke
-  const state = stateMachine?.state || 'unknown'
-  const timeSinceLastOutput = lastDataReceivedAt
-    ? (Date.now() - lastDataReceivedAt)
-    : Number.POSITIVE_INFINITY
-
-  // Debug: log injection check status when there are pending messages
-  if (messageQueue.length > 0) {
-    debug(`Inject check: queue=${messageQueue.length}, cooldown=${timeSinceLastInject}ms/${COOLDOWN_MS}ms, keystroke=${timeSinceLastKeystroke}ms/${IDLE_TIMEOUT_MS}ms, inputBuf=${tracker.buffer.length}, state=${state}, outputSilent=${timeSinceLastOutput}ms`)
-  }
-
-  if (timeSinceLastInject < COOLDOWN_MS) {
-    if (messageQueue.length > 0) debug(`Skipping inject - cooldown (${COOLDOWN_MS - timeSinceLastInject}ms remaining)`)
-    return
-  }
-  if (messageQueue.length === 0) return
-  if (!initialLoadComplete) {
-    debug('Skipping inject - initial load not complete')
-    return
-  }
-  if (!tracker.canInject(IDLE_TIMEOUT_MS)) {
-    const bufferInfo = INPUT_DEBUG ? ` ${tracker.getBufferDebug()}` : ''
-    debug(`Skipping inject - canInject=false (inputBuf=${tracker.buffer.length}, keystroke=${timeSinceLastKeystroke}ms ago)${bufferInfo}`)
-    return
-  }
-  if (stateMachine && stateMachine.state === 'waiting_input') {
-    debug('Skipping inject - agent waiting for input')
-    return
-  }
-
-  // Don't inject while agent is actively streaming with extended thinking -
-  // causes API error ("thinking blocks cannot be modified").
-  // Safe to inject during: idle, waiting_input, working (tool execution)
-  if (stateMachine && stateMachine.state === 'thinking') {
-    // If we've seen no output for a while, the agent is likely idle but
-    // the state machine missed the idle prompt. Allow injection to avoid
-    // starving queued messages.
-    if (timeSinceLastOutput < IDLE_TIMEOUT_MS) {
-      debug(`Skipping inject - agent is thinking (recent output ${timeSinceLastOutput}ms ago)`)
-      return
-    }
-    debug(`Thinking state but no output for ${timeSinceLastOutput}ms - allowing inject`)
-  }
-
-  const messages = messageQueue.splice(0, messageQueue.length)
-  const messageIds = messages.map(m => m.id).filter(id => id)
-
-  const formattedMessages = messages.map(formatMessageForInjection).join(' | ')
-  const prompt = `NEW TEAM MESSAGE(S): ${formattedMessages}`
-
-  debug(`Injecting ${messages.length} message(s)`)
-  inject(prompt)
-  lastInjected = Date.now()
-
-  // Don't mark as read immediately - wait for confirmation
-  // Store with timestamp so we can mark as read after delay or on output detection
-  if (messageIds.length > 0) {
-    pendingReadConfirmation.push({
-      ids: messageIds,
-      injectedAt: Date.now(),
-      prompt: prompt.substring(0, 50)  // For debugging
-    })
-  }
-}
-
-// Mark messages as read after we see activity (agent responded to them)
-// or after a timeout (to prevent infinite retries)
-function checkPendingReadConfirmation() {
-  if (pendingReadConfirmation.length === 0) return
-
-  const now = Date.now()
-  const CONFIRMATION_TIMEOUT_MS = 10000  // 10 seconds max wait
-
-  // Check if agent has become active since injection (indicates message was received)
-  const agentResponded = tracker.buffer.length > 0 || stateMachine?.state === 'working'
-
-  for (let i = pendingReadConfirmation.length - 1; i >= 0; i--) {
-    const pending = pendingReadConfirmation[i]
-    const elapsed = now - pending.injectedAt
-
-    // Mark as read if: agent responded OR timeout reached
-    if (agentResponded || elapsed > CONFIRMATION_TIMEOUT_MS) {
-      if (socket.connected) {
-        debug(`Marking ${pending.ids.length} message(s) as read (${agentResponded ? 'agent responded' : 'timeout'})`)
-        socket.emit('mark_read', { messageIds: pending.ids })
-      }
-      pendingReadConfirmation.splice(i, 1)
-    }
-  }
-}
-
-// Run confirmation check periodically
-setInterval(checkPendingReadConfirmation, 1000)
-
-setInterval(checkAndInject, CHECK_INTERVAL_MS)
+// NOTE: rename_session and workspace_sync are now delivered as messages
+// (RENAME_SESSION, WORKSPACE_SYNC) through SQLite, not via PTY writes.
+// Agents receive them through the hook system and act on them directly.
 
 // Graceful shutdown
 process.on('SIGINT', () => {

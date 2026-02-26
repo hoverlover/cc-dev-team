@@ -2,6 +2,7 @@ import { Server } from 'socket.io'
 import { createServer } from 'http'
 import { DatabaseSync } from 'node:sqlite'
 import { mkdirSync, readdirSync, statSync, existsSync, writeFileSync } from 'fs'
+import { open as fsOpen, write as fsWrite, close as fsClose, constants as fsConstants } from 'node:fs'
 import { dirname, join, basename, resolve } from 'path'
 import { fileURLToPath } from 'url'
 import { spawn } from 'child_process'
@@ -735,6 +736,30 @@ io.on('connection', (socket) => {
     // Send to dashboards watching this session
     io.to(`session:${session.id}:dashboard`).emit('message', message)
 
+    // Wake up the target agent's FIFO poller (if it exists).
+    // Uses O_WRONLY | O_NONBLOCK so the open fails instantly (ENXIO) if no reader,
+    // instead of blocking the broker event loop.
+    // For "team" or base role targets (e.g., "engineer"), wake all session agents.
+    const allAgents = [...(session.agents?.keys() || [])]
+    let wakeTargets
+    if (to === 'team') {
+      wakeTargets = allAgents
+    } else if (allAgents.some(a => a.startsWith(to + '-'))) {
+      // Base role (e.g., "engineer") — wake all matching numbered agents
+      wakeTargets = allAgents.filter(a => a === to || a.startsWith(to + '-'))
+    } else {
+      wakeTargets = [to]
+    }
+    for (const target of wakeTargets) {
+      const fifoPath = `/tmp/cc-wake-${target}`
+      if (existsSync(fifoPath)) {
+        fsOpen(fifoPath, fsConstants.O_WRONLY | fsConstants.O_NONBLOCK, (err, fd) => {
+          if (err) return // ENXIO (no reader) or ENOENT (no fifo) — ignore
+          fsWrite(fd, 'wake\n', () => fsClose(fd, () => {}))
+        })
+      }
+    }
+
     if (callback) callback({ success: true, messageId: message.id })
   })
 
@@ -814,8 +839,27 @@ io.on('connection', (socket) => {
     session.issueTitle = issueTitle
     session.issueUrl = issueUrl
 
-    // Broadcast to all agents in this session (including sender)
-    io.to(`session:${session.id}:team`).emit('rename_session', { issueNum, worktreeName })
+    // Insert RENAME_SESSION messages into SQLite for all agents.
+    // Agents receive these via the hook system and run `/rename` themselves.
+    const renameContent = JSON.stringify({ issueNum, worktreeName })
+    for (const target of session.agents.keys()) {
+      try {
+        db.prepare(`
+          INSERT INTO messages (session_id, from_agent, to_agent, message_type, content)
+          VALUES (?, ?, ?, 'RENAME_SESSION', ?)
+        `).run(session.id, agentRole, target, renameContent)
+      } catch (err) {
+        console.error(`[Broker] Failed to insert RENAME_SESSION for ${target}:`, err.message)
+      }
+      // Wake the agent's FIFO poller
+      const fifoPath = `/tmp/cc-wake-${target}`
+      if (existsSync(fifoPath)) {
+        fsOpen(fifoPath, fsConstants.O_WRONLY | fsConstants.O_NONBLOCK, (err, fd) => {
+          if (err) return
+          fsWrite(fd, 'wake\n', () => fsClose(fd, () => {}))
+        })
+      }
+    }
 
     // Broadcast to dashboard
     io.to(`session:${session.id}:dashboard`).emit('session_metadata', {
@@ -889,8 +933,28 @@ io.on('connection', (socket) => {
       session.workspacePath = null
     }
 
-    // Broadcast to other agents in this session (exclude sender with socket.to)
-    socket.to(`session:${session.id}:team`).emit('workspace_sync', { path, action })
+    // Insert WORKSPACE_SYNC messages into SQLite for each agent (except sender).
+    // Agents receive these via the hook system and run `cd` themselves.
+    const content = JSON.stringify({ action, path })
+    const otherAgents = [...session.agents.keys()].filter(a => a !== agentRole)
+    for (const target of otherAgents) {
+      try {
+        db.prepare(`
+          INSERT INTO messages (session_id, from_agent, to_agent, message_type, content)
+          VALUES (?, ?, ?, 'WORKSPACE_SYNC', ?)
+        `).run(session.id, agentRole, target, content)
+      } catch (err) {
+        console.error(`[Broker] Failed to insert WORKSPACE_SYNC for ${target}:`, err.message)
+      }
+      // Wake the agent's FIFO poller
+      const fifoPath = `/tmp/cc-wake-${target}`
+      if (existsSync(fifoPath)) {
+        fsOpen(fifoPath, fsConstants.O_WRONLY | fsConstants.O_NONBLOCK, (err, fd) => {
+          if (err) return
+          fsWrite(fd, 'wake\n', () => fsClose(fd, () => {}))
+        })
+      }
+    }
 
     // Also notify dashboards
     io.to(`session:${session.id}:dashboard`).emit('workspace_update', {
