@@ -8,6 +8,7 @@ import { spawn } from 'child_process'
 import { randomUUID } from 'crypto'
 import { homedir } from 'os'
 import { getNextInstanceId } from './lib/getNextInstanceId.js'
+import { detectWorktrees } from './lib/worktreeDetection.js'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const ORCHESTRATOR_DIR = join(__dirname, '..')
@@ -135,11 +136,19 @@ function listDirectory(dirPath) {
         return a.name.localeCompare(b.name)
       })
 
-    return {
+    const result = {
       path: resolvedPath,
       parent: dirname(resolvedPath),
       items
     }
+
+    // Detect worktrees if this is a git repo
+    const worktrees = detectWorktrees(resolvedPath)
+    if (worktrees) {
+      result.worktrees = worktrees
+    }
+
+    return result
   } catch (err) {
     return { error: err.message, path: dirPath }
   }
