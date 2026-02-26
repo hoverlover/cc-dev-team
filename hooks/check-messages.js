@@ -133,12 +133,10 @@ try {
         // Poller already running — allow stop (poller will wake agent when message arrives)
         process.exit(0)
       } else {
-        // DEBUG: Log env vars, lock file path, and PID status
-        const debugInfo = `[DEBUG] BROKER_SESSION_ID=${process.env.BROKER_SESSION_ID || '(unset)'}, SESSION_ID=${process.env.SESSION_ID || '(unset)'}, AGENT_ID=${process.env.AGENT_ID || '(unset)'}, lockFile=${lockFile}, exists=${existsSync(lockFile)}, pollerAlive=${pollerAlive}`
         // No poller running — block with short reason (agent knows the command from docs)
         const output = {
           decision: 'block',
-          reason: `No pending messages. Start the background message poller. ${debugInfo}`
+          reason: `No pending messages. Start the background message poller.`
         }
         process.stdout.write(JSON.stringify(output))
       }
