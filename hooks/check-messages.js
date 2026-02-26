@@ -17,7 +17,7 @@
 
 import { DatabaseSync } from 'node:sqlite'
 import { join } from 'node:path'
-import { existsSync, readFileSync } from 'node:fs'
+import { existsSync, readFileSync, unlinkSync } from 'node:fs'
 
 const agentId = process.env.AGENT_ID
 const sessionId = process.env.BROKER_SESSION_ID || process.env.SESSION_ID
@@ -122,7 +122,8 @@ try {
           pollerAlive = true
         }
       } catch {
-        // PID doesn't exist or lock is corrupted — poller is dead
+        // PID doesn't exist or lock is corrupted — clean up stale lock file
+        try { unlinkSync(lockFile) } catch { /* ignore */ }
       }
     }
 
@@ -132,10 +133,12 @@ try {
         // Poller already running — allow stop (poller will wake agent when message arrives)
         process.exit(0)
       } else {
+        // DEBUG: Log env vars, lock file path, and PID status
+        const debugInfo = `[DEBUG] BROKER_SESSION_ID=${process.env.BROKER_SESSION_ID || '(unset)'}, SESSION_ID=${process.env.SESSION_ID || '(unset)'}, AGENT_ID=${process.env.AGENT_ID || '(unset)'}, lockFile=${lockFile}, exists=${existsSync(lockFile)}, pollerAlive=${pollerAlive}`
         // No poller running — block with short reason (agent knows the command from docs)
         const output = {
           decision: 'block',
-          reason: 'No pending messages. Start the background message poller.'
+          reason: `No pending messages. Start the background message poller. ${debugInfo}`
         }
         process.stdout.write(JSON.stringify(output))
       }
