@@ -54,7 +54,7 @@
       "Bash(rename-sessions:*)",
       "Bash(set-issue-bar:*)",
       "Bash(get-roster)",
-      "Bash(wait-for-messages:*)",
+      "Bash(ensure-poller)",
       "Bash(mkdir -p __HOME_DIR__/.cc-dev-team/worktrees/*)",
       "Bash(git:*)",
       "Bash(cd:*)",

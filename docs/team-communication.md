@@ -21,19 +21,18 @@ When you finish your current work and the system instructs you to start
 the background message poller, you MUST run this **exact** command:
 
 ```bash
-wait-for-messages --agent $AGENT_ID --session $SESSION_ID
+ensure-poller
 ```
 
-**IMPORTANT:** `$AGENT_ID` and `$SESSION_ID` are environment variables
-already set by the wrapper. Use them exactly as shown — do NOT substitute
-file reads, temp files, hardcoded values, or any other approach.
+Use Bash with run_in_background=true. `ensure-poller` is idempotent —
+it checks if a poller is already running and only spawns one if needed.
+No arguments required; it reads AGENT_ID and SESSION_ID from env.
 
-Use Bash with run_in_background=true. This is critical for the
-self-sustaining message loop:
+This is critical for the self-sustaining message loop:
 
 1. You finish work → system checks for messages → none pending
 2. System instructs you to start the poller
-3. You start the poller as a background task
+3. You run ensure-poller as a background task
 4. The poller watches for new messages without burning API tokens
 5. When a message arrives → poller exits → you are notified
 6. On your next tool call, the hook delivers the actual message

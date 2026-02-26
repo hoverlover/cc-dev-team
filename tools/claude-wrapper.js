@@ -360,7 +360,7 @@ debug(`Using permission args: ${permArgs.join(' ')}`)
 // Add initial prompt so agents auto-start the message poller on boot.
 // The positional prompt argument makes Claude execute this on startup,
 // eliminating the need for humans to type "check your messages" manually.
-const initialPrompt = `You are online. Start the message poller by running: wait-for-messages --agent $AGENT_ID --session $SESSION_ID as a background Bash task (run_in_background=true). Then wait for messages.`
+const initialPrompt = `You are online. Run: ensure-poller as a background Bash task (run_in_background=true). Then wait for messages.`
 fullClaudeArgs.push('--', initialPrompt)
 debug(`Initial prompt set for auto-poller bootstrap`)
 

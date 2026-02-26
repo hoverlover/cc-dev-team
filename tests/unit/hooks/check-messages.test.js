@@ -294,7 +294,7 @@ describe('hooks/check-messages.js', () => {
       expect(result).toBeTruthy()
       expect(result.decision).toBe('block')
       expect(result.reason).toContain('No pending messages')
-      expect(result.reason).toContain('Start the background message poller')
+      expect(result.reason).toContain('ensure-poller')
       expect(result.reason).not.toContain('wait-for-messages')
     })
 
@@ -318,7 +318,7 @@ describe('hooks/check-messages.js', () => {
       expect(result).toBeTruthy()
       expect(result.decision).toBe('block')
       expect(result.reason).toContain('No pending messages')
-      expect(result.reason).not.toContain('wait-for-messages')
+      expect(result.reason).toContain('ensure-poller')
     })
   })
 

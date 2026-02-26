@@ -133,21 +133,19 @@ try {
         // Poller already running — allow stop (poller will wake agent when message arrives)
         process.exit(0)
       } else {
-        // No poller running — block with short reason (agent knows the command from docs)
+        // No poller running — block and tell agent to start one
         const output = {
           decision: 'block',
-          reason: `No pending messages. Start the background message poller.`
+          reason: 'No pending messages. Run ensure-poller in the background.'
         }
         process.stdout.write(JSON.stringify(output))
       }
     } else if (hookEvent === 'SessionStart') {
       if (!pollerAlive) {
-        // Session just started with no poller — give full command for easy copy
-        const pollerInstruction = `No pending messages. Start the background message poller to wait for new messages. Run: wait-for-messages --agent ${agentId} --session ${sessionId} using Bash with run_in_background=true. The poller will notify you when a message arrives.`
         const output = {
           hookSpecificOutput: {
             hookEventName: hookEvent,
-            additionalContext: pollerInstruction
+            additionalContext: 'No pending messages. Start the background message poller to wait for new messages. Run: ensure-poller using Bash with run_in_background=true. The poller will notify you when a message arrives.'
           }
         }
         process.stdout.write(JSON.stringify(output))
