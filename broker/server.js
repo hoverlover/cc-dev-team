@@ -1,7 +1,7 @@
 import { Server } from 'socket.io'
 import { createServer } from 'http'
 import { DatabaseSync } from 'node:sqlite'
-import { mkdirSync, readdirSync, statSync, existsSync, writeFileSync, rmSync, unlinkSync } from 'fs'
+import { mkdirSync, readdirSync, readFileSync, statSync, existsSync, writeFileSync, rmSync, unlinkSync } from 'fs'
 import { open as fsOpen, write as fsWrite, close as fsClose, constants as fsConstants } from 'node:fs'
 import { dirname, join, basename, resolve } from 'path'
 import { fileURLToPath } from 'url'
@@ -1106,9 +1106,26 @@ Waiting for connections...
   `)
 })
 
-// Graceful shutdown
-process.on('SIGINT', () => {
+// Graceful shutdown — handle both SIGINT (Ctrl+C) and SIGTERM (from parent shell/process manager)
+let shuttingDown = false
+function shutdown() {
+  if (shuttingDown) return
+  shuttingDown = true
+
   console.log('\n[Broker] Shutting down...')
+
+  // Kill poller processes first (they hold FIFOs open and block on read)
+  try {
+    const entries = readdirSync(TEMP_DIR)
+    for (const entry of entries) {
+      if (entry.startsWith('poller-') && entry.endsWith('.lock')) {
+        try {
+          const pid = parseInt(readFileSync(join(TEMP_DIR, entry), 'utf8').trim(), 10)
+          if (pid) process.kill(pid, 'SIGTERM')
+        } catch { /* ignore — process already dead or lock corrupted */ }
+      }
+    }
+  } catch { /* TEMP_DIR may not exist */ }
 
   // Kill all agent processes in all sessions
   for (const [sessionId, session] of sessions) {
@@ -1123,4 +1140,7 @@ process.on('SIGINT', () => {
 
   db.close()
   process.exit(0)
-})
+}
+
+process.on('SIGINT', shutdown)
+process.on('SIGTERM', shutdown)
