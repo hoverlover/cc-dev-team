@@ -23,7 +23,7 @@
 import { DatabaseSync } from 'node:sqlite'
 import { join } from 'node:path'
 import {
-  writeFileSync, readFileSync, unlinkSync, existsSync, mkdirSync
+  writeFileSync, readFileSync, unlinkSync, mkdirSync
 } from 'node:fs'
 import { open } from 'node:fs/promises'
 import { execSync } from 'node:child_process'
@@ -72,22 +72,34 @@ function isPollerAlive(pid) {
   }
 }
 
-// Check for existing poller
-if (existsSync(lockFile)) {
-  try {
-    const existingPid = parseInt(readFileSync(lockFile, 'utf8').trim(), 10)
-    if (existingPid && isPollerAlive(existingPid)) {
-      console.log(`Poller already running (PID ${existingPid})`)
-      process.exit(2)
+// Acquire PID lock atomically (O_CREAT|O_EXCL via 'wx' flag)
+try {
+  writeFileSync(lockFile, String(process.pid), { flag: 'wx' })
+} catch (err) {
+  if (err.code === 'EEXIST') {
+    // Lock file exists — check if the owning process is still alive
+    try {
+      const existingPid = parseInt(readFileSync(lockFile, 'utf8').trim(), 10)
+      if (existingPid && isPollerAlive(existingPid)) {
+        console.log(`Poller already running (PID ${existingPid})`)
+        process.exit(2)
+      }
+      // Stale lock — remove and retry
+      unlinkSync(lockFile)
+      writeFileSync(lockFile, String(process.pid), { flag: 'wx' })
+    } catch (retryErr) {
+      if (retryErr.code === 'EEXIST') {
+        // Another process won the race on retry
+        console.log('Poller already running (lost lock race)')
+        process.exit(2)
+      }
+      try { unlinkSync(lockFile) } catch { /* ignore */ }
+      throw retryErr
     }
-    unlinkSync(lockFile)
-  } catch {
-    try { unlinkSync(lockFile) } catch { /* ignore */ }
+  } else {
+    throw err
   }
 }
-
-// Write our PID lock
-writeFileSync(lockFile, String(process.pid))
 
 // Clean exit — always remove lock file and FIFO
 function cleanup() {
