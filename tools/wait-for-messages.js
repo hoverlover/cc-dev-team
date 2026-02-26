@@ -7,7 +7,7 @@
  * The broker writes to the FIFO after inserting a message into SQLite.
  * Falls back to SQLite polling if the FIFO can't be created.
  *
- * Uses a PID lock file (/tmp/cc-poller-<agent-id>.lock) to prevent duplicate
+ * Uses a PID lock file (/tmp/cc-poller-<agent-id>-<session-id>.lock) to prevent duplicate
  * pollers. If an existing poller is alive, this instance exits immediately.
  *
  * Usage:
@@ -22,8 +22,7 @@
 import { DatabaseSync } from 'node:sqlite'
 import { join } from 'node:path'
 import {
-  writeFileSync, readFileSync, unlinkSync, existsSync,
-  openSync, writeSync, closeSync
+  writeFileSync, readFileSync, unlinkSync, existsSync
 } from 'node:fs'
 import { open } from 'node:fs/promises'
 import { execSync } from 'node:child_process'
@@ -55,8 +54,9 @@ if (!agentId || !sessionId || !orchestratorDir) {
 }
 
 // PID lock file to prevent duplicate pollers
-const lockFile = `/tmp/cc-poller-${agentId}.lock`
-const fifoPath = `/tmp/cc-wake-${agentId}`
+// Include sessionId to avoid collisions between concurrent projects
+const lockFile = `/tmp/cc-poller-${agentId}-${sessionId}.lock`
+const fifoPath = `/tmp/cc-wake-${agentId}-${sessionId}`
 
 function isPollerAlive(pid) {
   try {
@@ -146,37 +146,19 @@ function createFifo() {
 const hasFifo = createFifo()
 
 if (hasFifo) {
-  // FIFO mode: block on read, instant wake-up from broker.
-  // Timeout is handled by writing 'timeout' to the FIFO to unblock the read,
-  // since process.exit() can't interrupt a pending FIFO open/read.
-  const timeoutMs = timeoutSeconds * 1000
-  const timer = setTimeout(() => {
-    // Unblock the FIFO read by writing to it ourselves.
-    // Since we already have a reader, openSync('w') returns immediately.
-    try {
-      const wfd = openSync(fifoPath, 'w')
-      writeSync(wfd, 'timeout\n')
-      closeSync(wfd)
-    } catch { /* ignore — reader may have closed */ }
-  }, timeoutMs)
-
+  // FIFO mode: block on read indefinitely, instant wake-up from broker.
+  // No timeout needed — FIFO read uses zero CPU while blocked, and the broker
+  // writes to it as soon as a message arrives. A timeout would just cause
+  // unnecessary restart loops that burn API turns.
   try {
     const fd = await open(fifoPath, 'r')
     const buf = Buffer.alloc(64)
-    const { bytesRead } = await fd.read(buf, 0, 64)
+    await fd.read(buf, 0, 64)
     await fd.close()
-    clearTimeout(timer)
 
-    const msg = buf.slice(0, bytesRead).toString().trim()
-    if (msg === 'timeout') {
-      console.log(`No messages after ${timeoutSeconds}s timeout`)
-      exit(1)
-    } else {
-      console.log(`Messages pending for ${agentId}`)
-      exit(0)
-    }
+    console.log(`Messages pending for ${agentId}`)
+    exit(0)
   } catch {
-    clearTimeout(timer)
     exit(0)
   }
 } else {

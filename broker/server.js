@@ -196,13 +196,13 @@ function spawnAgent(session, role) {
   }
 
   const proc = spawn('node', [wrapperPath], {
-    cwd: ORCHESTRATOR_DIR,
+    cwd: session.projectDir,
     env: {
       ...process.env,
       AGENT_ROLE: actualRole,
       BROKER_URL: `http://localhost:${PORT}`,
       SESSION_ID: session.id,
-      PROJECT_DIR: ORCHESTRATOR_DIR,
+      PROJECT_DIR: session.projectDir,
       ORCHESTRATOR_DIR: ORCHESTRATOR_DIR,
       PLUGINS_DIR: PLUGINS_DIR,
       AGENT_SYSTEM_PROMPT: agentSystemPrompt && existsSync(agentSystemPrompt) ? agentSystemPrompt : '',
@@ -696,18 +696,32 @@ io.on('connection', (socket) => {
       content: typeof content === 'string' ? content : JSON.stringify(content)
     }
 
-    // Persist to database and get the actual row ID
-    try {
-      const result = db.prepare(`
-        INSERT INTO messages (session_id, from_agent, to_agent, thread_id, message_type, content)
-        VALUES (?, ?, ?, ?, ?, ?)
-      `).run(message.session_id, message.from_agent, message.to_agent, message.thread_id, message.message_type, message.content)
-      // Use the actual database ID so mark_read works correctly
-      message.id = result.lastInsertRowid
-    } catch (err) {
-      console.error('[Broker] Failed to persist message:', err)
-      // Fallback to timestamp if insert fails (message won't be markable as read)
-      message.id = Date.now()
+    // Persist to database with retry for SQLITE_BUSY (hook transactions may hold a lock)
+    const MAX_RETRIES = 3
+    const RETRY_DELAY_MS = 50
+    let persisted = false
+    for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+      try {
+        const result = db.prepare(`
+          INSERT INTO messages (session_id, from_agent, to_agent, thread_id, message_type, content)
+          VALUES (?, ?, ?, ?, ?, ?)
+        `).run(message.session_id, message.from_agent, message.to_agent, message.thread_id, message.message_type, message.content)
+        message.id = result.lastInsertRowid
+        persisted = true
+        break
+      } catch (err) {
+        const isBusy = err.message?.includes('SQLITE_BUSY') || err.code === 'SQLITE_BUSY'
+        if (isBusy && attempt < MAX_RETRIES) {
+          console.warn(`[Broker] SQLite busy, retrying INSERT (attempt ${attempt}/${MAX_RETRIES})`)
+          // Synchronous delay (acceptable here since broker is single-threaded and delay is short)
+          const start = Date.now()
+          while (Date.now() - start < RETRY_DELAY_MS * attempt) { /* spin */ }
+        } else {
+          console.error(`[Broker] Failed to persist message after ${attempt} attempts:`, err.message)
+          message.id = Date.now()
+          break
+        }
+      }
     }
 
     // Handle PROJECT_INIT specially
@@ -751,7 +765,7 @@ io.on('connection', (socket) => {
       wakeTargets = [to]
     }
     for (const target of wakeTargets) {
-      const fifoPath = `/tmp/cc-wake-${target}`
+      const fifoPath = `/tmp/cc-wake-${target}-${session.id}`
       if (existsSync(fifoPath)) {
         fsOpen(fifoPath, fsConstants.O_WRONLY | fsConstants.O_NONBLOCK, (err, fd) => {
           if (err) return // ENXIO (no reader) or ENOENT (no fifo) — ignore
@@ -760,7 +774,7 @@ io.on('connection', (socket) => {
       }
     }
 
-    if (callback) callback({ success: true, messageId: message.id })
+    if (callback) callback({ success: true, messageId: message.id, persisted })
   })
 
   // ---- Spawn Agent (allows PM or other agents to spawn new agents) ----
@@ -852,7 +866,7 @@ io.on('connection', (socket) => {
         console.error(`[Broker] Failed to insert RENAME_SESSION for ${target}:`, err.message)
       }
       // Wake the agent's FIFO poller
-      const fifoPath = `/tmp/cc-wake-${target}`
+      const fifoPath = `/tmp/cc-wake-${target}-${session.id}`
       if (existsSync(fifoPath)) {
         fsOpen(fifoPath, fsConstants.O_WRONLY | fsConstants.O_NONBLOCK, (err, fd) => {
           if (err) return
@@ -947,7 +961,7 @@ io.on('connection', (socket) => {
         console.error(`[Broker] Failed to insert WORKSPACE_SYNC for ${target}:`, err.message)
       }
       // Wake the agent's FIFO poller
-      const fifoPath = `/tmp/cc-wake-${target}`
+      const fifoPath = `/tmp/cc-wake-${target}-${session.id}`
       if (existsSync(fifoPath)) {
         fsOpen(fifoPath, fsConstants.O_WRONLY | fsConstants.O_NONBLOCK, (err, fd) => {
           if (err) return

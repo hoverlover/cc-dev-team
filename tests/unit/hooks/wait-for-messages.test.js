@@ -8,8 +8,9 @@ import { tmpdir } from 'os'
 const POLLER_SCRIPT = join(import.meta.dirname, '..', '..', '..', 'tools', 'wait-for-messages.js')
 const TEST_DIR = join(tmpdir(), `wait-for-messages-test-${process.pid}`)
 const DB_PATH = join(TEST_DIR, 'data', 'messages.db')
-const LOCK_FILE = '/tmp/cc-poller-engineer-1.lock'
-const FIFO_PATH = '/tmp/cc-wake-engineer-1'
+const TEST_SESSION_ID = 'test-session'
+const LOCK_FILE = `/tmp/cc-poller-engineer-1-${TEST_SESSION_ID}.lock`
+const FIFO_PATH = `/tmp/cc-wake-engineer-1-${TEST_SESSION_ID}`
 
 function createTestDb() {
   mkdirSync(join(TEST_DIR, 'data'), { recursive: true })
@@ -101,29 +102,9 @@ describe('tools/wait-for-messages.js', () => {
     expect(result.stdout).toContain('Messages pending for engineer-1')
   })
 
-  it('times out when no messages arrive', async () => {
-    const result = await new Promise((resolve, reject) => {
-      execFile('node', [
-        POLLER_SCRIPT,
-        '--agent', 'engineer-1',
-        '--session', 'test-session',
-        '--timeout', '2'
-      ], {
-        env: {
-          ...process.env,
-          ORCHESTRATOR_DIR: TEST_DIR,
-          AGENT_ID: 'engineer-1',
-          SESSION_ID: 'test-session'
-        },
-        timeout: 10000
-      }, (err, stdout, stderr) => {
-        resolve({ code: err?.code ?? 0, stdout: stdout.trim(), stderr })
-      })
-    })
-
-    expect(result.code).toBe(1)
-    expect(result.stdout).toContain('No messages after')
-  })
+  // FIFO mode no longer has a timeout — it blocks indefinitely until
+  // the broker writes to it. The "wakes up when FIFO is written to" test
+  // below validates this blocking behavior.
 
   it('wakes up when FIFO is written to', async () => {
     // Start poller (no messages in DB), then write to FIFO after a delay
