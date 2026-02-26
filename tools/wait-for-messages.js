@@ -78,7 +78,7 @@ if (existsSync(lockFile)) {
     const existingPid = parseInt(readFileSync(lockFile, 'utf8').trim(), 10)
     if (existingPid && isPollerAlive(existingPid)) {
       console.log(`Poller already running (PID ${existingPid})`)
-      process.exit(0)
+      process.exit(2)
     }
     unlinkSync(lockFile)
   } catch {
