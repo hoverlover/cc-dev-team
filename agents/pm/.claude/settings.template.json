@@ -9,17 +9,40 @@
           {
             "type": "command",
             "command": "__ORCHESTRATOR_DIR__/hooks/session-start.py"
+          },
+          {
+            "type": "command",
+            "command": "__ORCHESTRATOR_DIR__/hooks/check-messages.js"
           }
         ]
       }
     ],
-    "PreToolUse": [
+    "PostToolUse": [
       {
-        "matcher": "Read|Edit|Write|Bash",
         "hooks": [
           {
             "type": "command",
-            "command": "__ORCHESTRATOR_DIR__/hooks/check-pending.py"
+            "command": "__ORCHESTRATOR_DIR__/hooks/check-messages.js"
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "__ORCHESTRATOR_DIR__/hooks/check-messages.js"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "__ORCHESTRATOR_DIR__/hooks/check-messages.js"
           }
         ]
       }
@@ -31,6 +54,7 @@
       "Bash(rename-sessions:*)",
       "Bash(set-issue-bar:*)",
       "Bash(get-roster)",
+      "Bash(wait-for-messages:*)",
       "Bash(mkdir -p __HOME_DIR__/.cc-dev-team/worktrees/*)",
       "Bash(git:*)",
       "Bash(cd:*)",
