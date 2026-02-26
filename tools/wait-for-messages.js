@@ -7,7 +7,7 @@
  * The broker writes to the FIFO after inserting a message into SQLite.
  * Falls back to SQLite polling if the FIFO can't be created.
  *
- * Uses a PID lock file (/tmp/cc-poller-<agent-id>-<session-id>.lock) to prevent duplicate
+ * Uses a PID lock file (/tmp/cc-dev-team/cc-poller-<agent-id>-<session-id>.lock) to prevent duplicate
  * pollers. If an existing poller is alive, this instance exits immediately.
  *
  * Usage:
@@ -22,7 +22,7 @@
 import { DatabaseSync } from 'node:sqlite'
 import { join } from 'node:path'
 import {
-  writeFileSync, readFileSync, unlinkSync, existsSync
+  writeFileSync, readFileSync, unlinkSync, existsSync, mkdirSync
 } from 'node:fs'
 import { open } from 'node:fs/promises'
 import { execSync } from 'node:child_process'
@@ -53,10 +53,14 @@ if (!agentId || !sessionId || !orchestratorDir) {
   process.exit(1)
 }
 
+// Temp directory for all cc-dev-team temp files (FIFOs, lock files)
+const TEMP_DIR = '/tmp/cc-dev-team'
+mkdirSync(TEMP_DIR, { recursive: true })
+
 // PID lock file to prevent duplicate pollers
 // Include sessionId to avoid collisions between concurrent projects
-const lockFile = `/tmp/cc-poller-${agentId}-${sessionId}.lock`
-const fifoPath = `/tmp/cc-wake-${agentId}-${sessionId}`
+const lockFile = `${TEMP_DIR}/cc-poller-${agentId}-${sessionId}.lock`
+const fifoPath = `${TEMP_DIR}/cc-wake-${agentId}-${sessionId}`
 
 function isPollerAlive(pid) {
   try {

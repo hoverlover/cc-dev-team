@@ -1,7 +1,7 @@
 import { Server } from 'socket.io'
 import { createServer } from 'http'
 import { DatabaseSync } from 'node:sqlite'
-import { mkdirSync, readdirSync, statSync, existsSync, writeFileSync } from 'fs'
+import { mkdirSync, readdirSync, statSync, existsSync, writeFileSync, rmSync, unlinkSync } from 'fs'
 import { open as fsOpen, write as fsWrite, close as fsClose, constants as fsConstants } from 'node:fs'
 import { dirname, join, basename, resolve } from 'path'
 import { fileURLToPath } from 'url'
@@ -17,10 +17,12 @@ const TOOLS_DIR = join(ORCHESTRATOR_DIR, 'tools')
 const AGENTS_DIR = join(ORCHESTRATOR_DIR, 'agents')
 const PLUGINS_DIR = join(ORCHESTRATOR_DIR, 'plugins')
 const UPLOADS_DIR = join(homedir(), '.cc-dev-team', 'uploads')
+const TEMP_DIR = '/tmp/cc-dev-team'
 
 // Ensure data directory exists
 mkdirSync(DATA_DIR, { recursive: true })
 mkdirSync(UPLOADS_DIR, { recursive: true })
+mkdirSync(TEMP_DIR, { recursive: true })
 
 // Initialize SQLite database for message persistence
 const db = new DatabaseSync(join(DATA_DIR, 'messages.db'))
@@ -765,7 +767,7 @@ io.on('connection', (socket) => {
       wakeTargets = [to]
     }
     for (const target of wakeTargets) {
-      const fifoPath = `/tmp/cc-wake-${target}-${session.id}`
+      const fifoPath = join(TEMP_DIR, `cc-wake-${target}-${session.id}`)
       if (existsSync(fifoPath)) {
         fsOpen(fifoPath, fsConstants.O_WRONLY | fsConstants.O_NONBLOCK, (err, fd) => {
           if (err) return // ENXIO (no reader) or ENOENT (no fifo) — ignore
@@ -866,7 +868,7 @@ io.on('connection', (socket) => {
         console.error(`[Broker] Failed to insert RENAME_SESSION for ${target}:`, err.message)
       }
       // Wake the agent's FIFO poller
-      const fifoPath = `/tmp/cc-wake-${target}-${session.id}`
+      const fifoPath = join(TEMP_DIR, `cc-wake-${target}-${session.id}`)
       if (existsSync(fifoPath)) {
         fsOpen(fifoPath, fsConstants.O_WRONLY | fsConstants.O_NONBLOCK, (err, fd) => {
           if (err) return
@@ -961,7 +963,7 @@ io.on('connection', (socket) => {
         console.error(`[Broker] Failed to insert WORKSPACE_SYNC for ${target}:`, err.message)
       }
       // Wake the agent's FIFO poller
-      const fifoPath = `/tmp/cc-wake-${target}-${session.id}`
+      const fifoPath = join(TEMP_DIR, `cc-wake-${target}-${session.id}`)
       if (existsSync(fifoPath)) {
         fsOpen(fifoPath, fsConstants.O_WRONLY | fsConstants.O_NONBLOCK, (err, fd) => {
           if (err) return
@@ -1064,6 +1066,11 @@ io.on('connection', (socket) => {
         role: agentRole,
         timestamp: new Date().toISOString()
       })
+
+      // Clean up agent's temp files (FIFO + lock) as safety net for orphaned pollers
+      try { unlinkSync(join(TEMP_DIR, `cc-wake-${agentRole}-${session.id}`)) } catch { /* ignore */ }
+      try { unlinkSync(join(TEMP_DIR, `cc-poller-${agentRole}-${session.id}.lock`)) } catch { /* ignore */ }
+
       console.log(`[Broker] ${agentRole} disconnected from session ${session.id} - reason: ${reason}`)
     }
   })
@@ -1103,6 +1110,9 @@ process.on('SIGINT', () => {
       proc.kill('SIGTERM')
     }
   }
+
+  // Clean up all temp files (FIFOs and lock files)
+  try { rmSync(TEMP_DIR, { recursive: true, force: true }) } catch { /* ignore */ }
 
   db.close()
   process.exit(0)
