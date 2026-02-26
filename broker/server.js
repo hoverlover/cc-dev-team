@@ -983,7 +983,14 @@ io.on('connection', (socket) => {
           console.log(`[Broker] Skipping /add-dir for ${target} (waiting for input)`)
           continue
         }
-        io.to(agentInfo.socketId).emit('agent_input', { data: `/add-dir ${path}\n` })
+        // Send command text first, then \r (Enter) after a delay.
+        // PTY expects \r for Enter (not \n), and the delay ensures the
+        // Enter key is processed outside any bracketed paste context.
+        io.to(agentInfo.socketId).emit('agent_input', { data: `/add-dir ${path}` })
+        const targetSocketId = agentInfo.socketId
+        setTimeout(() => {
+          io.to(targetSocketId).emit('agent_input', { data: '\r' })
+        }, 150)
         console.log(`[Broker] Sent /add-dir ${path} to ${target}`)
       }
     }
