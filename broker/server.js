@@ -125,7 +125,6 @@ function listDirectory(dirPath) {
 
     const entries = readdirSync(resolvedPath, { withFileTypes: true })
     const items = entries
-      .filter(entry => !entry.name.startsWith('.')) // Hide hidden files
       .map(entry => ({
         name: entry.name,
         path: join(resolvedPath, entry.name),
