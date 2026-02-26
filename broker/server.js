@@ -970,6 +970,22 @@ io.on('connection', (socket) => {
       }
     }
 
+    // Send /add-dir via agent_input to update Claude Code status bar (directory + branch)
+    // Only on 'switch' — agents need to see the new worktree path
+    if (action === 'switch') {
+      for (const target of otherAgents) {
+        const agentInfo = session.agents.get(target)
+        if (!agentInfo?.socketId) continue
+        // Skip agents waiting for input — injecting text would answer their prompt
+        if (agentInfo.waitingForInput) {
+          console.log(`[Broker] Skipping /add-dir for ${target} (waiting for input)`)
+          continue
+        }
+        io.to(agentInfo.socketId).emit('agent_input', { data: `/add-dir ${path}\n` })
+        console.log(`[Broker] Sent /add-dir ${path} to ${target}`)
+      }
+    }
+
     // Also notify dashboards
     io.to(`session:${session.id}:dashboard`).emit('workspace_update', {
       sessionId: session.id,
