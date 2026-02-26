@@ -136,7 +136,7 @@ try {
         // No poller running — block and tell agent to start one
         const output = {
           decision: 'block',
-          reason: 'No pending messages. Run ensure-poller in the background.'
+          reason: 'No pending messages. Start the background message poller to wait for new messages. Run: ensure-poller using Bash with run_in_background=true. The poller will notify you when a message arrives.'
         }
         process.stdout.write(JSON.stringify(output))
       }

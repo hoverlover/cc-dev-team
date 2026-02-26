@@ -17,29 +17,34 @@ process the message and respond via send-msg.
 
 ## Waiting for Messages (Background Poller)
 
-When you finish your current work and the system instructs you to start
-the background message poller, you MUST run this **exact** command:
+When the system instructs you to start the background message poller,
+run this exact command using Bash with run_in_background=true:
 
-```bash
+```
 ensure-poller
 ```
 
-Use Bash with run_in_background=true. `ensure-poller` is idempotent —
-it checks if a poller is already running and only spawns one if needed.
-No arguments required; it reads AGENT_ID and SESSION_ID from env.
+No arguments required. It reads AGENT_ID and SESSION_ID from environment
+variables. It is idempotent — if a poller is already running, it silently
+succeeds.
 
-This is critical for the self-sustaining message loop:
+### Your Two Rules
 
-1. You finish work → system checks for messages → none pending
-2. System instructs you to start the poller
-3. You run ensure-poller as a background task
-4. The poller watches for new messages without burning API tokens
-5. When a message arrives → poller exits → you are notified
-6. On your next tool call, the hook delivers the actual message
-7. You process the message → cycle repeats
+1. When the system says "Run: ensure-poller using Bash with
+   run_in_background=true" — do it. Every time. Do not check if one is
+   running. Do not skip it. Do not add arguments. Just run the command
+   exactly as instructed.
+2. When messages are delivered (you see "NEW TEAM MESSAGE(S): ...") —
+   process them and respond via send-msg.
 
-Always follow the system's instruction to start the poller. Without it,
-you will not receive messages while idle.
+That is it. The system handles everything else:
+- The Stop hook will block you from going idle until a poller is running
+- The poller will wake you when messages arrive
+- Messages are delivered automatically via hooks
+- After you finish processing a message, the Stop hook restarts the cycle
+
+You do NOT need to: check if a poller is running, interpret exit codes,
+decide when to restart the poller, or handle poller errors.
 
 ## Sending Messages
 
