@@ -196,13 +196,13 @@ function spawnAgent(session, role) {
   }
 
   const proc = spawn('node', [wrapperPath], {
-    cwd: session.projectDir,
+    cwd: ORCHESTRATOR_DIR,
     env: {
       ...process.env,
       AGENT_ROLE: actualRole,
       BROKER_URL: `http://localhost:${PORT}`,
       SESSION_ID: session.id,
-      PROJECT_DIR: session.projectDir,
+      PROJECT_DIR: ORCHESTRATOR_DIR,
       ORCHESTRATOR_DIR: ORCHESTRATOR_DIR,
       PLUGINS_DIR: PLUGINS_DIR,
       AGENT_SYSTEM_PROMPT: agentSystemPrompt && existsSync(agentSystemPrompt) ? agentSystemPrompt : '',

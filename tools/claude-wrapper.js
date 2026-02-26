@@ -42,7 +42,7 @@ function debug(msg) {
 // Parse arguments (with environment variable fallbacks for broker-spawned agents)
 const args = process.argv.slice(2)
 let agentId = process.env.AGENT_ROLE || null
-let agentDir = process.env.PROJECT_DIR || process.cwd()  // Agent runs in project directory
+let agentDir = process.cwd()  // Inherits broker's working directory (correct for worktrees)
 let instanceDir = null
 let headless = process.env.HEADLESS === 'true'
 let skipPermissions = process.env.SKIP_PERMISSIONS === 'true'
@@ -86,7 +86,7 @@ while (i < args.length) {
 
 if (!agentId) {
   console.error('Usage: claude-wrapper.js --agent-id <id> [--headless] [--session-id <id>] [--agent-dir <dir>] [--instance-dir <dir>] [-- claude args...]')
-  console.error('Or set environment variables: AGENT_ROLE, SESSION_ID, PROJECT_DIR, HEADLESS')
+  console.error('Or set environment variables: AGENT_ROLE, SESSION_ID, HEADLESS')
   process.exit(1)
 }
 
