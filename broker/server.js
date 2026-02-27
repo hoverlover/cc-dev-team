@@ -1,7 +1,8 @@
 import { Server } from 'socket.io'
 import { createServer } from 'http'
 import { DatabaseSync } from 'node:sqlite'
-import { mkdirSync, readdirSync, statSync, existsSync, writeFileSync } from 'fs'
+import { mkdirSync, readdirSync, readFileSync, statSync, existsSync, writeFileSync, rmSync, unlinkSync } from 'fs'
+import { open as fsOpen, write as fsWrite, close as fsClose, constants as fsConstants } from 'node:fs'
 import { dirname, join, basename, resolve } from 'path'
 import { fileURLToPath } from 'url'
 import { spawn } from 'child_process'
@@ -17,10 +18,12 @@ const TOOLS_DIR = join(ORCHESTRATOR_DIR, 'tools')
 const AGENTS_DIR = join(ORCHESTRATOR_DIR, 'agents')
 const PLUGINS_DIR = join(ORCHESTRATOR_DIR, 'plugins')
 const UPLOADS_DIR = join(homedir(), '.cc-dev-team', 'uploads')
+const TEMP_DIR = '/tmp/cc-dev-team'
 
 // Ensure data directory exists
 mkdirSync(DATA_DIR, { recursive: true })
 mkdirSync(UPLOADS_DIR, { recursive: true })
+mkdirSync(TEMP_DIR, { recursive: true })
 
 // Initialize SQLite database for message persistence
 const db = new DatabaseSync(join(DATA_DIR, 'messages.db'))
@@ -209,6 +212,7 @@ function spawnAgent(session, role) {
       AGENT_ROLE: actualRole,
       BROKER_URL: `http://localhost:${PORT}`,
       SESSION_ID: session.id,
+      BROKER_SESSION_ID: session.id,
       PROJECT_DIR: session.projectDir,
       ORCHESTRATOR_DIR: ORCHESTRATOR_DIR,
       PLUGINS_DIR: PLUGINS_DIR,
@@ -703,18 +707,32 @@ io.on('connection', (socket) => {
       content: typeof content === 'string' ? content : JSON.stringify(content)
     }
 
-    // Persist to database and get the actual row ID
-    try {
-      const result = db.prepare(`
-        INSERT INTO messages (session_id, from_agent, to_agent, thread_id, message_type, content)
-        VALUES (?, ?, ?, ?, ?, ?)
-      `).run(message.session_id, message.from_agent, message.to_agent, message.thread_id, message.message_type, message.content)
-      // Use the actual database ID so mark_read works correctly
-      message.id = result.lastInsertRowid
-    } catch (err) {
-      console.error('[Broker] Failed to persist message:', err)
-      // Fallback to timestamp if insert fails (message won't be markable as read)
-      message.id = Date.now()
+    // Persist to database with retry for SQLITE_BUSY (hook transactions may hold a lock)
+    const MAX_RETRIES = 3
+    const RETRY_DELAY_MS = 50
+    let persisted = false
+    for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+      try {
+        const result = db.prepare(`
+          INSERT INTO messages (session_id, from_agent, to_agent, thread_id, message_type, content)
+          VALUES (?, ?, ?, ?, ?, ?)
+        `).run(message.session_id, message.from_agent, message.to_agent, message.thread_id, message.message_type, message.content)
+        message.id = result.lastInsertRowid
+        persisted = true
+        break
+      } catch (err) {
+        const isBusy = err.message?.includes('SQLITE_BUSY') || err.code === 'SQLITE_BUSY'
+        if (isBusy && attempt < MAX_RETRIES) {
+          console.warn(`[Broker] SQLite busy, retrying INSERT (attempt ${attempt}/${MAX_RETRIES})`)
+          // Synchronous delay (acceptable here since broker is single-threaded and delay is short)
+          const start = Date.now()
+          while (Date.now() - start < RETRY_DELAY_MS * attempt) { /* spin */ }
+        } else {
+          console.error(`[Broker] Failed to persist message after ${attempt} attempts:`, err.message)
+          message.id = Date.now()
+          break
+        }
+      }
     }
 
     // Handle PROJECT_INIT specially
@@ -743,7 +761,31 @@ io.on('connection', (socket) => {
     // Send to dashboards watching this session
     io.to(`session:${session.id}:dashboard`).emit('message', message)
 
-    if (callback) callback({ success: true, messageId: message.id })
+    // Wake up the target agent's FIFO poller (if it exists).
+    // Uses O_WRONLY | O_NONBLOCK so the open fails instantly (ENXIO) if no reader,
+    // instead of blocking the broker event loop.
+    // For "team" or base role targets (e.g., "engineer"), wake all session agents.
+    const allAgents = [...(session.agents?.keys() || [])]
+    let wakeTargets
+    if (to === 'team') {
+      wakeTargets = allAgents
+    } else if (allAgents.some(a => a.startsWith(to + '-'))) {
+      // Base role (e.g., "engineer") — wake all matching numbered agents
+      wakeTargets = allAgents.filter(a => a === to || a.startsWith(to + '-'))
+    } else {
+      wakeTargets = [to]
+    }
+    for (const target of wakeTargets) {
+      const fifoPath = join(TEMP_DIR, `wake-${target}-${session.id}`)
+      if (existsSync(fifoPath)) {
+        fsOpen(fifoPath, fsConstants.O_WRONLY | fsConstants.O_NONBLOCK, (err, fd) => {
+          if (err) return // ENXIO (no reader) or ENOENT (no fifo) — ignore
+          fsWrite(fd, 'wake\n', () => fsClose(fd, () => {}))
+        })
+      }
+    }
+
+    if (callback) callback({ success: true, messageId: message.id, persisted })
   })
 
   // ---- Spawn Agent (allows PM or other agents to spawn new agents) ----
@@ -822,8 +864,27 @@ io.on('connection', (socket) => {
     session.issueTitle = issueTitle
     session.issueUrl = issueUrl
 
-    // Broadcast to all agents in this session (including sender)
-    io.to(`session:${session.id}:team`).emit('rename_session', { issueNum, worktreeName })
+    // Insert RENAME_SESSION messages into SQLite for all agents.
+    // Agents receive these via the hook system and run `/rename` themselves.
+    const renameContent = JSON.stringify({ issueNum, worktreeName })
+    for (const target of session.agents.keys()) {
+      try {
+        db.prepare(`
+          INSERT INTO messages (session_id, from_agent, to_agent, message_type, content)
+          VALUES (?, ?, ?, 'RENAME_SESSION', ?)
+        `).run(session.id, agentRole, target, renameContent)
+      } catch (err) {
+        console.error(`[Broker] Failed to insert RENAME_SESSION for ${target}:`, err.message)
+      }
+      // Wake the agent's FIFO poller
+      const fifoPath = join(TEMP_DIR, `wake-${target}-${session.id}`)
+      if (existsSync(fifoPath)) {
+        fsOpen(fifoPath, fsConstants.O_WRONLY | fsConstants.O_NONBLOCK, (err, fd) => {
+          if (err) return
+          fsWrite(fd, 'wake\n', () => fsClose(fd, () => {}))
+        })
+      }
+    }
 
     // Broadcast to dashboard
     io.to(`session:${session.id}:dashboard`).emit('session_metadata', {
@@ -897,8 +958,51 @@ io.on('connection', (socket) => {
       session.workspacePath = null
     }
 
-    // Broadcast to other agents in this session (exclude sender with socket.to)
-    socket.to(`session:${session.id}:team`).emit('workspace_sync', { path, action })
+    // Insert WORKSPACE_SYNC messages into SQLite for each agent (except sender).
+    // Agents receive these via the hook system and run `cd` themselves.
+    const content = JSON.stringify({ action, path })
+    const otherAgents = [...session.agents.keys()].filter(a => a !== agentRole)
+    for (const target of otherAgents) {
+      try {
+        db.prepare(`
+          INSERT INTO messages (session_id, from_agent, to_agent, message_type, content)
+          VALUES (?, ?, ?, 'WORKSPACE_SYNC', ?)
+        `).run(session.id, agentRole, target, content)
+      } catch (err) {
+        console.error(`[Broker] Failed to insert WORKSPACE_SYNC for ${target}:`, err.message)
+      }
+      // Wake the agent's FIFO poller
+      const fifoPath = join(TEMP_DIR, `wake-${target}-${session.id}`)
+      if (existsSync(fifoPath)) {
+        fsOpen(fifoPath, fsConstants.O_WRONLY | fsConstants.O_NONBLOCK, (err, fd) => {
+          if (err) return
+          fsWrite(fd, 'wake\n', () => fsClose(fd, () => {}))
+        })
+      }
+    }
+
+    // Send /add-dir via agent_input to update Claude Code status bar (directory + branch)
+    // Only on 'switch' — agents need to see the new worktree path
+    if (action === 'switch') {
+      for (const target of otherAgents) {
+        const agentInfo = session.agents.get(target)
+        if (!agentInfo?.socketId) continue
+        // Skip agents waiting for input — injecting text would answer their prompt
+        if (agentInfo.waitingForInput) {
+          console.log(`[Broker] Skipping /add-dir for ${target} (waiting for input)`)
+          continue
+        }
+        // Send command text first, then \r (Enter) after a delay.
+        // PTY expects \r for Enter (not \n), and the delay ensures the
+        // Enter key is processed outside any bracketed paste context.
+        io.to(agentInfo.socketId).emit('agent_input', { data: `/add-dir ${path}` })
+        const targetSocketId = agentInfo.socketId
+        setTimeout(() => {
+          io.to(targetSocketId).emit('agent_input', { data: '\r' })
+        }, 150)
+        console.log(`[Broker] Sent /add-dir ${path} to ${target}`)
+      }
+    }
 
     // Also notify dashboards
     io.to(`session:${session.id}:dashboard`).emit('workspace_update', {
@@ -978,6 +1082,11 @@ io.on('connection', (socket) => {
         role: agentRole,
         timestamp: new Date().toISOString()
       })
+
+      // Clean up agent's temp files (FIFO + lock) as safety net for orphaned pollers
+      try { unlinkSync(join(TEMP_DIR, `wake-${agentRole}-${session.id}`)) } catch { /* ignore */ }
+      try { unlinkSync(join(TEMP_DIR, `poller-${agentRole}-${session.id}.lock`)) } catch { /* ignore */ }
+
       console.log(`[Broker] ${agentRole} disconnected from session ${session.id} - reason: ${reason}`)
     }
   })
@@ -1006,9 +1115,26 @@ Waiting for connections...
   `)
 })
 
-// Graceful shutdown
-process.on('SIGINT', () => {
+// Graceful shutdown — handle both SIGINT (Ctrl+C) and SIGTERM (from parent shell/process manager)
+let shuttingDown = false
+function shutdown() {
+  if (shuttingDown) return
+  shuttingDown = true
+
   console.log('\n[Broker] Shutting down...')
+
+  // Kill poller processes first (they hold FIFOs open and block on read)
+  try {
+    const entries = readdirSync(TEMP_DIR)
+    for (const entry of entries) {
+      if (entry.startsWith('poller-') && entry.endsWith('.lock')) {
+        try {
+          const pid = parseInt(readFileSync(join(TEMP_DIR, entry), 'utf8').trim(), 10)
+          if (pid) process.kill(pid, 'SIGTERM')
+        } catch { /* ignore — process already dead or lock corrupted */ }
+      }
+    }
+  } catch { /* TEMP_DIR may not exist */ }
 
   // Kill all agent processes in all sessions
   for (const [sessionId, session] of sessions) {
@@ -1018,6 +1144,12 @@ process.on('SIGINT', () => {
     }
   }
 
+  // Clean up all temp files (FIFOs and lock files)
+  try { rmSync(TEMP_DIR, { recursive: true, force: true }) } catch { /* ignore */ }
+
   db.close()
   process.exit(0)
-})
+}
+
+process.on('SIGINT', shutdown)
+process.on('SIGTERM', shutdown)

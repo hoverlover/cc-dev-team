@@ -1,6 +1,6 @@
 # Team Communication
 
-You communicate with your team through a message broker via socket.io. Messages are delivered in real-time and injected directly into your conversation.
+You communicate with your team through a message broker via socket.io. Messages are delivered automatically between tool calls via Claude Code hooks.
 
 ## IMPORTANT: Always Respond via Broker
 
@@ -8,10 +8,50 @@ You communicate with your team through a message broker via socket.io. Messages 
 
 ## Receiving Messages
 
-Messages from other agents appear as `[MESSAGE from <agent>] [<type>]: <content>`. When you receive a message:
-1. Read and understand the content
-2. **Send your response using the `send-msg` command** (not just terminal output)
-3. No file cleanup needed - messages are delivered in real-time
+Messages from other agents are automatically delivered between tool calls
+via Claude Code hooks. They appear as context injected by the system —
+you don't need to check for them manually.
+
+When you see "NEW TEAM MESSAGE(S): [MESSAGE from <agent>] [<type>]: <content>",
+process the message and respond via send-msg.
+
+## Waiting for Messages (Sub-agent Poller)
+
+When you have no more work to do, start a message-waiting sub-agent:
+
+Use the Task tool with these parameters:
+- subagent_type: "message-poller"
+- prompt: "Wait for messages"
+- description: "Message Inbox"
+
+The `message-poller` is a pre-configured subagent (Haiku, Bash-only, 50 turns max).
+You do not need to specify model, max_turns, or tools — they are built in.
+
+### Your Rules
+
+1. **On boot**, start a Task(wait) as your first action.
+2. **When the Task returns with messages**, process them and respond
+   via `send-msg`, then RESUME the same sub-agent by passing its
+   agent ID via the `resume` parameter. Call `send-msg` AND
+   `Task(resume)` together in one turn.
+3. **When the Task returns with no messages** (timeout or max_turns
+   exhausted), RESUME the same sub-agent to continue waiting.
+4. **Only start a NEW Task(wait)** if you don't have an agent ID to
+   resume (e.g., on boot or after an error).
+5. **Do NOT narrate poller status.** Never output text like "Standing
+   by", "Waiting for messages", "No messages yet", "Resuming poller",
+   etc. The user can see the poller status in the UI. Just call the
+   Task tool silently — no surrounding commentary.
+6. **NEVER call TaskOutput** on the message-poller. The Task tool runs
+   it in the background automatically — you will be notified when it
+   completes. Calling TaskOutput blocks the main agent, wastes tokens,
+   and prevents you from receiving hook-delivered messages.
+
+Resuming reuses the sub-agent's cached context (10x cheaper than
+spawning a new one). Always prefer resume over starting fresh.
+
+You do NOT need to: manage pollers, check lock files, or interpret exit
+codes.
 
 ## Sending Messages
 

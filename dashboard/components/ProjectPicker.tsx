@@ -65,6 +65,7 @@ export default function ProjectPicker({ socket, isOpen, onClose, onSelectProject
   const [error, setError] = useState<string | null>(null)
   const [projectName, setProjectName] = useState('')
   const [skipPermissions, setSkipPermissions] = useState(false)
+  const [showHidden, setShowHidden] = useState(false)
   const [highlightedIndex, setHighlightedIndex] = useState<number>(-1)
   const [worktreeInfo, setWorktreeInfo] = useState<WorktreeInfo | null>(null)
   const [showWorktreePanel, setShowWorktreePanel] = useState(false)
@@ -81,9 +82,10 @@ export default function ProjectPicker({ socket, isOpen, onClose, onSelectProject
   }
 
   const filter = getFilter()
+  const visibleItems = showHidden ? items : items.filter(item => !item.name.startsWith('.'))
   const filteredItems = filter
-    ? items.filter(item => item.name.toLowerCase().includes(filter.toLowerCase()))
-    : items
+    ? visibleItems.filter(item => item.name.toLowerCase().includes(filter.toLowerCase()))
+    : visibleItems
 
   // Reset highlight when filter changes
   useEffect(() => {
@@ -279,6 +281,13 @@ export default function ProjectPicker({ socket, isOpen, onClose, onSelectProject
           />
           <button className={styles.goButton} onClick={() => loadDirectory(inputPath)}>
             Go
+          </button>
+          <button
+            className={`${styles.toggleHidden} ${showHidden ? styles.toggleHiddenActive : ''}`}
+            onClick={() => setShowHidden(prev => !prev)}
+            title={showHidden ? 'Hide dotfiles' : 'Show dotfiles'}
+          >
+            .*
           </button>
         </div>
 

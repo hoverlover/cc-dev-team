@@ -117,6 +117,35 @@
   background: var(--accent-hover);
 }
 
+/* ===== Show Hidden Toggle ===== */
+.toggleHidden {
+  background: var(--bg-tertiary);
+  border: none;
+  color: var(--text-muted);
+  padding: 0.5rem 0.75rem;
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  font-family: 'SF Mono', Monaco, 'Cascadia Code', monospace;
+  font-size: 0.75rem;
+  font-weight: 500;
+  transition: all var(--transition-fast);
+}
+
+.toggleHidden:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.toggleHiddenActive {
+  background: var(--accent-muted);
+  color: var(--accent);
+}
+
+.toggleHiddenActive:hover {
+  background: var(--accent-muted);
+  color: var(--accent);
+}
+
 /* ===== Content Area ===== */
 .content {
   display: flex;
