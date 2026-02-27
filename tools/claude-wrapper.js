@@ -153,7 +153,11 @@ const STATE_PATTERNS = {
   // Idle indicators: prompt character at the very end of buffer only
   // Must be at end of string (no |⎿ since that appears mid-response)
   // The ❯ prompt must NOT be followed by numbered options (that's a permission prompt)
-  idlePrompt: /[❯>]\s*$/
+  idlePrompt: /[❯>]\s*$/,
+
+  // Task-based message waiting: agent is in a foreground Task sub-agent
+  // waiting for messages — should display as idle, not working
+  taskWaiting: /Task\s*\(.*(?:message.*(?:poller|wait)|wait.*message)/i
 }
 
 // Track when we last received PTY data for freshness checks
@@ -217,6 +221,14 @@ function detectStateTransition(buffer, sm) {
       sm.transition('thinking', thinkingText)
       sm.scheduleIdleTimeout(buffer)
     }
+    return
+  }
+
+  // Check for Task-based message waiting (should show as idle, not working)
+  if (STATE_PATTERNS.taskWaiting.test(recent)) {
+    debug('Pattern matched: taskWaiting (sub-agent poller)')
+    sm.transition('idle')
+    sm.cancelIdleTimeout()
     return
   }
 
@@ -357,10 +369,37 @@ const permArgs = buildPermissionArgs(skipPermissions)
 fullClaudeArgs.push(...permArgs)
 debug(`Using permission args: ${permArgs.join(' ')}`)
 
+// Register message-poller as a custom named subagent.
+// This gives structured config (model, maxTurns, tools) separate from the prompt,
+// and a PreToolUse hook that blocks run_in_background at the hook level.
+const orchestratorDir = join(__dirname, '..')
+const messagePollerAgent = {
+  'message-poller': {
+    description: 'Message poller for team communication. Use when idle to wait for incoming team messages.',
+    prompt: 'You are a message poller. Your ONLY job is to run one command in a loop.\n\nLOOP:\n1. Run: wait-for-messages --deliver (with timeout=600000)\n2. If output contains "NEW TEAM MESSAGE" → output it exactly as printed, then STOP.\n3. Otherwise (timeout, empty, error) → go to step 1. NEVER stop. NEVER return to parent.\n\nRULES:\n- NEVER output text. No commentary, no status updates, no narration.\n- NEVER run any command other than wait-for-messages --deliver.\n- NEVER stop looping unless you received a message.\n- You have 50 turns. Use them ALL for polling if needed.',
+    tools: ['Bash'],
+    model: 'haiku',
+    maxTurns: 50,
+    background: true,
+    permissionMode: 'bypassPermissions',
+    hooks: {
+      PreToolUse: [{
+        matcher: 'Bash',
+        hooks: [{
+          type: 'command',
+          command: join(orchestratorDir, 'hooks', 'block-background-bash.sh')
+        }]
+      }]
+    }
+  }
+}
+fullClaudeArgs.push('--agents', JSON.stringify(messagePollerAgent))
+debug(`Registered message-poller subagent`)
+
 // Add initial prompt so agents auto-start the message poller on boot.
 // The positional prompt argument makes Claude execute this on startup,
 // eliminating the need for humans to type "check your messages" manually.
-const initialPrompt = `You are online. Start the background message poller to wait for new messages. Run: ensure-poller using Bash with run_in_background=true. Then wait for messages.`
+const initialPrompt = `You are online. Start the message-waiting sub-agent using the Task tool per your system prompt instructions. Do not output any text — just call the Task tool silently.`
 fullClaudeArgs.push('--', initialPrompt)
 debug(`Initial prompt set for auto-poller bootstrap`)
 
