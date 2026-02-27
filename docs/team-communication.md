@@ -15,36 +15,43 @@ you don't need to check for them manually.
 When you see "NEW TEAM MESSAGE(S): [MESSAGE from <agent>] [<type>]: <content>",
 process the message and respond via send-msg.
 
-## Waiting for Messages (Background Poller)
+## Waiting for Messages (Sub-agent Poller)
 
-When the system instructs you to start the background message poller,
-run this exact command using Bash with run_in_background=true:
+When you have no more work to do, start a message-waiting sub-agent:
 
-```
-ensure-poller
-```
+Use the Task tool with these parameters:
+- subagent_type: "message-poller"
+- prompt: "Wait for messages"
+- description: "Message Inbox"
 
-No arguments required. It reads AGENT_ID and SESSION_ID from environment
-variables. It is idempotent — if a poller is already running, it silently
-succeeds.
+The `message-poller` is a pre-configured subagent (Haiku, Bash-only, 50 turns max).
+You do not need to specify model, max_turns, or tools — they are built in.
 
-### Your Two Rules
+### Your Rules
 
-1. When the system says "Run: ensure-poller using Bash with
-   run_in_background=true" — do it. Every time. Do not check if one is
-   running. Do not skip it. Do not add arguments. Just run the command
-   exactly as instructed.
-2. When messages are delivered (you see "NEW TEAM MESSAGE(S): ...") —
-   process them and respond via send-msg.
+1. **On boot**, start a Task(wait) as your first action.
+2. **When the Task returns with messages**, process them and respond
+   via `send-msg`, then RESUME the same sub-agent by passing its
+   agent ID via the `resume` parameter. Call `send-msg` AND
+   `Task(resume)` together in one turn.
+3. **When the Task returns with no messages** (timeout or max_turns
+   exhausted), RESUME the same sub-agent to continue waiting.
+4. **Only start a NEW Task(wait)** if you don't have an agent ID to
+   resume (e.g., on boot or after an error).
+5. **Do NOT narrate poller status.** Never output text like "Standing
+   by", "Waiting for messages", "No messages yet", "Resuming poller",
+   etc. The user can see the poller status in the UI. Just call the
+   Task tool silently — no surrounding commentary.
+6. **NEVER call TaskOutput** on the message-poller. The Task tool runs
+   it in the background automatically — you will be notified when it
+   completes. Calling TaskOutput blocks the main agent, wastes tokens,
+   and prevents you from receiving hook-delivered messages.
 
-That is it. The system handles everything else:
-- The Stop hook will block you from going idle until a poller is running
-- The poller will wake you when messages arrive
-- Messages are delivered automatically via hooks
-- After you finish processing a message, the Stop hook restarts the cycle
+Resuming reuses the sub-agent's cached context (10x cheaper than
+spawning a new one). Always prefer resume over starting fresh.
 
-You do NOT need to: check if a poller is running, interpret exit codes,
-decide when to restart the poller, or handle poller errors.
+You do NOT need to: manage pollers, check lock files, or interpret exit
+codes.
 
 ## Sending Messages
 
