@@ -8,7 +8,7 @@ import { DatabaseSync } from 'node:sqlite'
 
 import { execFileSync, execSync } from 'child_process'
 import { join } from 'path'
-import { mkdirSync, rmSync, existsSync, writeFileSync, unlinkSync } from 'fs'
+import { mkdirSync, rmSync, existsSync } from 'fs'
 import { tmpdir } from 'os'
 
 const HOOK_SCRIPT = join(import.meta.dirname, '..', '..', '..', 'hooks', 'check-messages.js')
@@ -244,12 +244,6 @@ describe('hooks/check-messages.js', () => {
   })
 
   describe('Stop hook', () => {
-    const lockFile = '/tmp/cc-dev-team/poller-engineer-1-test-session.lock'
-
-    afterEach(() => {
-      try { unlinkSync(lockFile) } catch { /* ignore */ }
-    })
-
     it('blocks and delivers messages in reason field (not additionalContext)', () => {
       insertMessage(db, {
         from_agent: 'pm',
@@ -269,56 +263,11 @@ describe('hooks/check-messages.js', () => {
       expect(result.additionalContext).toBeUndefined()
     })
 
-    it('blocks with messages in reason even when poller is alive', () => {
-      // Write a lock file with our own PID (known to be alive)
-      writeFileSync(lockFile, String(process.pid))
-
-      insertMessage(db, {
-        from_agent: 'pm',
-        to_agent: 'engineer-1',
-        message_type: 'TASK_ASSIGNMENT',
-        content: 'Urgent task'
-      })
-
+    it('allows stop when no messages (sub-agent handles waiting)', () => {
       const result = runHook({ hook_event_name: 'Stop' })
 
-      expect(result).toBeTruthy()
-      expect(result.decision).toBe('block')
-      expect(result.reason).toContain('Urgent task')
-      expect(result.additionalContext).toBeUndefined()
-    })
-
-    it('blocks with short reason when no messages and no poller', () => {
-      const result = runHook({ hook_event_name: 'Stop' })
-
-      expect(result).toBeTruthy()
-      expect(result.decision).toBe('block')
-      expect(result.reason).toContain('No pending messages')
-      expect(result.reason).toContain('ensure-poller')
-      expect(result.reason).not.toContain('wait-for-messages')
-    })
-
-    it('allows stop when no messages and poller is alive', () => {
-      // Write a lock file with our own PID (known to be alive)
-      writeFileSync(lockFile, String(process.pid))
-
-      const result = runHook({ hook_event_name: 'Stop' })
-
-      // Should return null (exit 0, no output) to allow stop
+      // No messages — allow stop. The parent's foreground Task sub-agent handles message waiting.
       expect(result).toBeNull()
-    })
-
-    it('cleans up stale lock and blocks with short reason when poller is dead', () => {
-      // Write a lock file with a PID that definitely doesn't exist
-      writeFileSync(lockFile, '999999999')
-
-      const result = runHook({ hook_event_name: 'Stop' })
-
-      // Stale lock should be ignored — same as no poller
-      expect(result).toBeTruthy()
-      expect(result.decision).toBe('block')
-      expect(result.reason).toContain('No pending messages')
-      expect(result.reason).toContain('ensure-poller')
     })
   })
 

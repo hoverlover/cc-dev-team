@@ -15,9 +15,15 @@
  *   ORCHESTRATOR_DIR - Path to orchestrator root (contains data/messages.db)
  */
 
+// Suppress Node.js ExperimentalWarning (SQLite) to keep hook output clean
+const _origEmit = process.emit
+process.emit = function (event, ...args) {
+  if (event === 'warning' && args[0]?.name === 'ExperimentalWarning') return false
+  return _origEmit.call(this, event, ...args)
+}
+
 import { DatabaseSync } from 'node:sqlite'
 import { join } from 'node:path'
-import { existsSync, readFileSync, unlinkSync } from 'node:fs'
 
 const agentId = process.env.AGENT_ID
 const sessionId = process.env.BROKER_SESSION_ID || process.env.SESSION_ID
@@ -111,47 +117,12 @@ try {
   } else {
     db.exec('COMMIT')
 
-    // Check if a poller is already running via PID lock file
-    const lockFile = `/tmp/cc-dev-team/poller-${agentId}-${sessionId}.lock`
-    let pollerAlive = false
-    if (existsSync(lockFile)) {
-      try {
-        const pid = parseInt(readFileSync(lockFile, 'utf8').trim(), 10)
-        if (pid) {
-          process.kill(pid, 0) // Throws if process doesn't exist
-          pollerAlive = true
-        }
-      } catch {
-        // PID doesn't exist or lock is corrupted — clean up stale lock file
-        try { unlinkSync(lockFile) } catch { /* ignore */ }
-      }
-    }
-
-    // No messages — behavior depends on hook event
     if (hookEvent === 'Stop') {
-      if (pollerAlive) {
-        // Poller already running — allow stop (poller will wake agent when message arrives)
-        process.exit(0)
-      } else {
-        // No poller running — block and tell agent to start one
-        const output = {
-          decision: 'block',
-          reason: 'No pending messages. Start the background message poller to wait for new messages. Run: ensure-poller using Bash with run_in_background=true. The poller will notify you when a message arrives.'
-        }
-        process.stdout.write(JSON.stringify(output))
-      }
-    } else if (hookEvent === 'SessionStart') {
-      if (!pollerAlive) {
-        const output = {
-          hookSpecificOutput: {
-            hookEventName: hookEvent,
-            additionalContext: 'No pending messages. Start the background message poller to wait for new messages. Run: ensure-poller using Bash with run_in_background=true. The poller will notify you when a message arrives.'
-          }
-        }
-        process.stdout.write(JSON.stringify(output))
-      }
+      // No messages — allow stop.
+      // The parent's foreground Task sub-agent handles message waiting.
+      process.exit(0)
     }
-    // PostToolUse / UserPromptSubmit with no messages: exit 0, no output
+    // PostToolUse / UserPromptSubmit / SessionStart with no messages: exit 0, no output
   }
 } catch (err) {
   try { db.exec('ROLLBACK') } catch { /* ignore */ }
