@@ -11,7 +11,7 @@
  * pollers. If an existing poller is alive, this instance exits immediately.
  *
  * Usage:
- *   wait-for-messages --agent <agent-id> --session <session-id> [--timeout <seconds>]
+ *   wait-for-messages --agent <agent-id> --session <session-id> [--timeout <seconds>] [--deliver]
  *
  * Environment variables (fallbacks):
  *   AGENT_ID           - Agent ID
@@ -19,6 +19,13 @@
  *   SESSION_ID         - Fallback session ID (may change on /resume)
  *   ORCHESTRATOR_DIR - Path to orchestrator root (contains data/messages.db)
  */
+
+// Suppress Node.js ExperimentalWarning (SQLite) to keep output clean for subagents
+const _origEmit = process.emit
+process.emit = function (event, ...args) {
+  if (event === 'warning' && args[0]?.name === 'ExperimentalWarning') return false
+  return _origEmit.call(this, event, ...args)
+}
 
 import { DatabaseSync } from 'node:sqlite'
 import { join } from 'node:path'
@@ -33,6 +40,7 @@ const args = process.argv.slice(2)
 let agentId = process.env.AGENT_ID
 let sessionId = process.env.BROKER_SESSION_ID || process.env.SESSION_ID
 let timeoutSeconds = 300
+let deliverMode = false
 
 for (let i = 0; i < args.length; i++) {
   if (args[i] === '--agent' && args[i + 1]) {
@@ -44,6 +52,8 @@ for (let i = 0; i < args.length; i++) {
   } else if (args[i] === '--timeout' && args[i + 1]) {
     timeoutSeconds = parseInt(args[i + 1], 10)
     i++
+  } else if (args[i] === '--deliver') {
+    deliverMode = true
   }
 }
 
@@ -72,28 +82,29 @@ function isPollerAlive(pid) {
   }
 }
 
-// Acquire PID lock atomically (O_CREAT|O_EXCL via 'wx' flag)
+// Acquire PID lock — "last writer wins" strategy.
+// If an existing poller is alive, kill it first. The newest invocation always
+// takes over, since previous subagent contexts are gone and can't process results.
 try {
   writeFileSync(lockFile, String(process.pid), { flag: 'wx' })
 } catch (err) {
   if (err.code === 'EEXIST') {
-    // Lock file exists — check if the owning process is still alive
     try {
       const existingPid = parseInt(readFileSync(lockFile, 'utf8').trim(), 10)
-      if (existingPid && isPollerAlive(existingPid)) {
-        console.log(`Poller already running (PID ${existingPid})`)
-        process.exit(2)
+      if (existingPid && existingPid !== process.pid && isPollerAlive(existingPid)) {
+        process.kill(existingPid, 'SIGTERM')
       }
-      // Stale lock — remove and retry
-      unlinkSync(lockFile)
+    } catch { /* ignore — stale lock or already dead */ }
+    // Remove stale lock and claim it
+    try { unlinkSync(lockFile) } catch { /* ignore */ }
+    try {
       writeFileSync(lockFile, String(process.pid), { flag: 'wx' })
     } catch (retryErr) {
       if (retryErr.code === 'EEXIST') {
-        // Another process won the race on retry
+        // Another process won the race — let it have it
         console.log('Poller already running (lost lock race)')
         process.exit(2)
       }
-      try { unlinkSync(lockFile) } catch { /* ignore */ }
       throw retryErr
     }
   } else {
@@ -143,9 +154,49 @@ function checkDbForMessages() {
   }
 }
 
+// Deliver mode: query full messages, mark as read, output formatted text
+function deliverMessages() {
+  try {
+    const db = new DatabaseSync(dbPath)
+    db.exec('BEGIN IMMEDIATE')
+    const rows = db.prepare(`
+      SELECT id, from_agent, message_type, content
+      FROM messages
+      WHERE session_id = ?
+        AND to_agent IN (${placeholders})
+        AND read = 0
+      ORDER BY id ASC
+    `).all(sessionId, ...targets)
+
+    if (rows.length > 0) {
+      const ids = rows.map(r => r.id)
+      const idPlaceholders = ids.map(() => '?').join(',')
+      db.prepare(`UPDATE messages SET read = 1 WHERE id IN (${idPlaceholders})`).run(...ids)
+      db.exec('COMMIT')
+      db.close()
+
+      const formatted = rows.map(r => {
+        const content = String(r.content).replace(/\n/g, ' ').replace(/\r/g, '')
+        return `[MESSAGE from ${r.from_agent}] [${r.message_type}]: ${content}`
+      })
+      console.log(`NEW TEAM MESSAGE(S): ${formatted.join(' | ')}`)
+      return true
+    }
+    db.exec('COMMIT')
+    db.close()
+    return false
+  } catch {
+    return false
+  }
+}
+
 // Immediate check — if messages already exist, exit right away
 if (checkDbForMessages()) {
-  console.log(`Messages pending for ${agentId}`)
+  if (deliverMode) {
+    deliverMessages()
+  } else {
+    console.log(`Messages pending for ${agentId}`)
+  }
   exit(0)
 }
 
@@ -173,7 +224,11 @@ if (hasFifo) {
     await fd.read(buf, 0, 64)
     await fd.close()
 
-    console.log(`Messages pending for ${agentId}`)
+    if (deliverMode) {
+      deliverMessages()
+    } else {
+      console.log(`Messages pending for ${agentId}`)
+    }
     exit(0)
   } catch {
     exit(0)
@@ -204,8 +259,12 @@ if (hasFifo) {
     try {
       const row = stmt.get(sessionId, ...targets)
       if (row.count > 0) {
-        console.log(`Messages pending for ${agentId}`)
         try { db.close() } catch { /* ignore */ }
+        if (deliverMode) {
+          deliverMessages()
+        } else {
+          console.log(`Messages pending for ${agentId}`)
+        }
         exit(0)
       }
     } catch {
