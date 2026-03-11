@@ -1,0 +1,22 @@
+services:
+  cc-dev-team:
+    build: .
+    environment:
+      CC_MODE: cloud
+      TASK_ID: test-task-001
+      SUPABASE_URL: http://host.docker.internal:54321
+      SUPABASE_SERVICE_ROLE_KEY: ${SUPABASE_SERVICE_ROLE_KEY}
+      MACHINE_JWT: test-jwt-local
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
+      PORT: "8080"
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./data/docker:/data
+    read_only: true
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL

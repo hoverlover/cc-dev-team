@@ -1,0 +1,11 @@
+node_modules
+.git
+dashboard/
+data/
+.claude/
+tests/
+coverage/
+*.test.js
+*.test.ts
+.env*
+.DS_Store
