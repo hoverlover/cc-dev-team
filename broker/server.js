@@ -10,6 +10,14 @@ import { randomUUID } from 'crypto'
 import { homedir } from 'os'
 import { getNextInstanceId } from './lib/getNextInstanceId.js'
 import { detectWorktrees } from './lib/worktreeDetection.js'
+import { createHealthHandler } from './lib/healthEndpoint.js'
+import { GracefulShutdown } from './lib/gracefulShutdown.js'
+
+// ============================================================================
+// MODE DETECTION
+// ============================================================================
+
+const CC_MODE = process.env.CC_MODE || 'local' // 'local' | 'cloud'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const ORCHESTRATOR_DIR = join(__dirname, '..')
@@ -45,7 +53,37 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_messages_session ON messages(session_id);
 `)
 
-const server = createServer()
+// ============================================================================
+// GRACEFUL SHUTDOWN
+// ============================================================================
+
+const gracefulShutdown = new GracefulShutdown({ graceMs: 10000 })
+
+// ============================================================================
+// HTTP SERVER WITH HEALTH ENDPOINT
+// ============================================================================
+
+const startTime = Date.now()
+
+const healthHandler = createHealthHandler({
+  getAgents: () => {
+    const allAgents = []
+    for (const session of sessions.values()) {
+      allAgents.push(...session.agents.keys())
+    }
+    return allAgents
+  },
+  getUptime: () => Math.floor((Date.now() - startTime) / 1000),
+  mode: CC_MODE,
+})
+
+const server = createServer((req, res) => {
+  if (req.method === 'GET' && req.url === '/health') {
+    return healthHandler(req, res)
+  }
+  // All other HTTP requests are handled by socket.io
+})
+
 const io = new Server(server, {
   cors: {
     origin: '*',
@@ -1106,6 +1144,7 @@ server.listen(PORT, () => {
 ║                CC DEV TEAM - MESSAGE BROKER                ║
 ╠════════════════════════════════════════════════════════════╣
 ║  ${pad('Status: RUNNING', 58)}║
+║  ${pad('Mode: ' + CC_MODE.toUpperCase(), 58)}║
 ║  ${pad('Port: ' + PORT, 58)}║
 ║  ${pad('Database: ' + dbPath, 58)}║
 ║  ${pad('Multi-Session: ENABLED', 58)}║
@@ -1116,10 +1155,10 @@ Waiting for connections...
 })
 
 // Graceful shutdown — handle both SIGINT (Ctrl+C) and SIGTERM (from parent shell/process manager)
-let shuttingDown = false
+gracefulShutdown.setDb(db)
+
 function shutdown() {
-  if (shuttingDown) return
-  shuttingDown = true
+  if (gracefulShutdown.isShuttingDown) return
 
   console.log('\n[Broker] Shutting down...')
 
@@ -1147,7 +1186,9 @@ function shutdown() {
   // Clean up all temp files (FIFOs and lock files)
   try { rmSync(TEMP_DIR, { recursive: true, force: true }) } catch { /* ignore */ }
 
-  db.close()
+  // Delegate to graceful shutdown (closes DB, aborts cloud agents, etc.)
+  gracefulShutdown.initiate()
+
   process.exit(0)
 }
 
