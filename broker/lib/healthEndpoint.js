@@ -1,29 +1,32 @@
 /**
- * Health check endpoint for the broker.
+ * Creates a request handler for GET /health.
  *
- * Returns agent status, uptime, and mode information.
- * Used by Fly.io Machine health checks and Vercel API readiness checks.
+ * @param {function} getState - Returns current broker state
+ * @returns {function} HTTP request handler
  */
+export function createHealthEndpoint(getState) {
+  return function handleHealth(req, res) {
+    const state = getState()
+    const statusCode = state.healthy ? 200 : 503
 
-/**
- * Create a health check request handler.
- *
- * @param {object} options
- * @param {function} options.getAgents - Returns array of active agent role names
- * @param {function} options.getUptime - Returns uptime in seconds
- * @param {string}  [options.mode]    - Operating mode ('local' | 'cloud')
- */
-export function createHealthHandler({ getAgents, getUptime, mode }) {
-  return function handleHealth(_req, res) {
-    const body = {
-      status: 'healthy',
-      agents: getAgents(),
-      uptime: getUptime(),
-    }
-    if (mode) {
-      body.mode = mode
-    }
-    res.writeHead(200, { 'Content-Type': 'application/json' })
-    res.end(JSON.stringify(body))
+    const body = JSON.stringify({
+      status: state.healthy ? 'healthy' : 'unhealthy',
+      uptime: process.uptime(),
+      mode: 'cloud',
+      agents: state.agents.map(a => ({
+        role: a.role,
+        status: a.status,
+        pid: a.pid
+      })),
+      task: state.currentTask ? {
+        id: state.currentTask.id,
+        status: state.currentTask.status,
+        started_at: state.currentTask.startedAt
+      } : null,
+      memory: process.memoryUsage()
+    })
+
+    res.writeHead(statusCode, { 'Content-Type': 'application/json' })
+    res.end(body)
   }
 }

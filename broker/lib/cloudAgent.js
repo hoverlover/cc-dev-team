@@ -1,76 +1,84 @@
-/**
- * Cloud-mode agent spawning for the broker.
- *
- * Wraps pi/broker-rpc.js to spawn Pi agents in RPC mode,
- * with broker-delivered messaging (steer RPC commands).
- */
-
-import { join } from 'path'
-import { spawnPiAgent } from '../../pi/broker-rpc.js'
+import { spawn } from 'child_process'
+import { createInterface } from 'readline'
 
 /**
- * Spawn a Pi agent in cloud mode.
+ * Spawns a Pi agent in RPC mode (stdin/stdout JSONL pipes).
  *
+ * @param {string} role - Agent role (e.g., 'pm', 'architect', 'engineer')
  * @param {object} config
- * @param {string} config.role - Agent role (pm, engineer-1, etc.)
- * @param {string} config.projectDir - Working directory
- * @param {string} config.piAgentsDir - Path to pi/agents/ directory
- * @param {string|string[]} config.extensionPath - Path(s) to extension file(s)
- * @param {string} config.provider - LLM provider
- * @param {string} config.model - Model ID
- * @param {function} config.onEvent - RPC event callback
- * @param {function} [config.onExit] - Exit callback
- * @param {function} [config.onError] - Error callback
- * @param {function} [config.onStderr] - Stderr callback
- * @param {object}  [config.env] - Additional env vars
+ * @param {string} config.systemPrompt - Path to the agent's system prompt file
+ * @param {string} config.workDir - Working directory for the agent
+ * @param {object} config.env - Additional environment variables
+ * @param {function} [config.onEvent] - Callback for parsed JSONL events from stdout
+ * @param {function} [config.onExit] - Callback when the process exits
+ * @returns {object} Agent handle with send/prompt/steer/abort/kill methods
  */
-export function spawnCloudAgent(config) {
-  // For numbered agents (engineer-2), use base role directory (engineer)
-  const baseRole = config.role.replace(/-\d+$/, '')
-  const systemPromptPath = join(config.piAgentsDir, baseRole, 'SYSTEM.md')
+export function spawnCloudAgent(role, config) {
+  const { systemPrompt, workDir, env = {}, onEvent, onExit } = config
 
-  const piAgent = spawnPiAgent({
-    role: config.role,
-    provider: config.provider,
-    model: config.model,
-    cwd: config.projectDir,
-    extensionPath: config.extensionPath,
-    systemPromptPath,
-    env: {
-      CC_AGENT_ROLE: config.role,
-      CC_MODE: 'cloud',
-      ...config.env,
-    },
-    onEvent: config.onEvent,
-    onError: config.onError,
-    onExit: config.onExit,
-    onStderr: config.onStderr,
+  const args = ['--mode', 'rpc', '--system-prompt', systemPrompt]
+
+  const proc = spawn('pi', args, {
+    stdio: ['pipe', 'pipe', 'pipe'],
+    env: { ...process.env, ...env },
+    cwd: workDir
   })
 
-  return {
-    role: config.role,
-    process: piAgent.process,
-    client: piAgent.client,
+  // JSONL reader on stdout
+  const reader = createInterface({ input: proc.stdout })
+  reader.on('line', (line) => {
+    try {
+      const event = JSON.parse(line)
+      if (onEvent) onEvent(event)
+    } catch {
+      // Non-JSON output — log but don't crash
+      console.warn(`[CloudAgent:${role}] Non-JSON stdout: ${line}`)
+    }
+  })
 
-    /** Send initial prompt to start the agent */
-    prompt(message) {
-      piAgent.prompt(message)
+  // Log stderr
+  proc.stderr.on('data', (data) => {
+    console.error(`[CloudAgent:${role}:stderr] ${data.toString().trim()}`)
+  })
+
+  proc.on('exit', (code, signal) => {
+    if (onExit) onExit(code, signal)
+  })
+
+  const agent = {
+    proc,
+    role,
+
+    /** Send raw JSONL command via stdin */
+    send(command) {
+      proc.stdin.write(JSON.stringify(command) + '\n')
     },
 
-    /** Deliver a team message via steer RPC */
-    deliverMessage(msg) {
-      const formatted = `NEW TEAM MESSAGE(S): [MESSAGE from ${msg.from_agent}] [${msg.message_type}]: ${msg.content}`
-      piAgent.steer(formatted)
+    /** Send a prompt to the agent (uses 'message' field per Pi RPC protocol) */
+    prompt(text) {
+      agent.send({ type: 'prompt', message: text })
     },
 
-    /** Abort current operation */
+    /** Steer the agent with additional context */
+    steer(text) {
+      agent.send({ type: 'steer', message: text })
+    },
+
+    /** Send a follow-up message */
+    followUp(text) {
+      agent.send({ type: 'follow_up', message: text })
+    },
+
+    /** Abort the current operation */
     abort() {
-      piAgent.abort()
+      agent.send({ type: 'abort' })
     },
 
     /** Kill the process */
-    kill(signal = 'SIGTERM') {
-      piAgent.kill(signal)
-    },
+    kill() {
+      proc.kill('SIGTERM')
+    }
   }
+
+  return agent
 }

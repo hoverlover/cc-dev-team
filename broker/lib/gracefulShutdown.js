@@ -1,69 +1,71 @@
 /**
- * Graceful shutdown coordinator for the broker.
- *
- * Handles SIGTERM by:
- * 1. Setting a shutdown flag (stop accepting new tasks)
- * 2. Sending abort to all registered agents
- * 3. Closing the database
- * 4. Exiting within the grace period (default 10s for Fly.io)
+ * Handles graceful SIGTERM shutdown in cloud mode.
+ * Aborts agents, flushes state to Supabase, closes SQLite.
  */
-
 export class GracefulShutdown {
-  #agents = new Map()
-  #db = null
-  #shuttingDown = false
-  #graceMs
-
-  constructor({ graceMs = 10000 } = {}) {
-    this.#graceMs = graceMs
+  constructor({ supabase, db, agents, machineId, currentTask, heartbeatInterval, taskTimeout }) {
+    this.supabase = supabase
+    this.db = db
+    this.agents = agents
+    this.machineId = machineId
+    this.currentTask = currentTask
+    this.heartbeatInterval = heartbeatInterval
+    this.taskTimeout = taskTimeout
+    this._executed = false
   }
 
-  get isShuttingDown() {
-    return this.#shuttingDown
-  }
+  async execute() {
+    if (this._executed) return
+    this._executed = true
 
-  setDb(db) {
-    this.#db = db
-  }
+    const shutdownStart = Date.now()
+    console.log('[Cloud] Graceful shutdown starting...')
 
-  registerAgent(role, agentHandle) {
-    this.#agents.set(role, agentHandle)
-  }
+    try {
+      // 1. Stop timers
+      if (this.heartbeatInterval) clearInterval(this.heartbeatInterval)
+      if (this.taskTimeout) clearTimeout(this.taskTimeout)
 
-  unregisterAgent(role) {
-    this.#agents.delete(role)
-  }
-
-  initiate() {
-    if (this.#shuttingDown) return
-    this.#shuttingDown = true
-
-    console.log('[Shutdown] Graceful shutdown initiated')
-
-    // 1. Abort all agents
-    for (const [role, handle] of this.#agents) {
-      try {
-        console.log(`[Shutdown] Aborting agent: ${role}`)
-        handle.abort()
-      } catch (err) {
-        console.error(`[Shutdown] Error aborting ${role}:`, err.message)
+      // 2. Abort all agents
+      for (const [role, agent] of this.agents) {
+        console.log(`[Cloud] Aborting agent: ${role}`)
+        agent.abort()
       }
-    }
 
-    // 2. Close database
-    if (this.#db) {
-      try {
-        this.#db.close()
-        console.log('[Shutdown] Database closed')
-      } catch (err) {
-        console.error('[Shutdown] Error closing database:', err.message)
+      // 3. Wait briefly for agents to flush (up to 3 seconds)
+      await Promise.race([
+        Promise.all([...this.agents.values()].map(a =>
+          new Promise(resolve => a.proc.on('exit', resolve))
+        )),
+        new Promise(resolve => setTimeout(resolve, 3000))
+      ])
+
+      // 4. Update task status if in-progress
+      if (this.currentTask?.status === 'running') {
+        await this.supabase
+          .from('tasks')
+          .update({
+            status: 'queued',
+            error: 'Machine stopped during execution'
+          })
+          .eq('id', this.currentTask.id)
       }
-    }
 
-    // 3. Force exit after grace period
-    setTimeout(() => {
-      console.log('[Shutdown] Grace period expired, forcing exit')
-      process.exit(1)
-    }, this.#graceMs).unref()
+      // 5. Update machine status
+      await this.supabase
+        .from('machines')
+        .update({
+          status: 'stopped',
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', this.machineId)
+
+      // 6. Close SQLite
+      this.db.close()
+
+      console.log(`[Cloud] Shutdown complete in ${Date.now() - shutdownStart}ms`)
+    } catch (err) {
+      console.error('[Cloud] Shutdown error:', err)
+    }
   }
 }
