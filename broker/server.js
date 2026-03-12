@@ -1,4 +1,3 @@
-import { Server } from 'socket.io'
 import { createServer } from 'http'
 import { DatabaseSync } from 'node:sqlite'
 import { mkdirSync, readdirSync, readFileSync, statSync, existsSync, writeFileSync, rmSync, unlinkSync } from 'fs'
@@ -11,9 +10,16 @@ import { homedir } from 'os'
 import { getNextInstanceId } from './lib/getNextInstanceId.js'
 import { detectWorktrees } from './lib/worktreeDetection.js'
 
+// ============================================================================
+// MODE DETECTION
+// ============================================================================
+
+const CC_MODE = process.env.CC_MODE || 'local'
+const isCloudMode = CC_MODE === 'cloud'
+
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const ORCHESTRATOR_DIR = join(__dirname, '..')
-const DATA_DIR = join(ORCHESTRATOR_DIR, 'data')
+const DATA_DIR = isCloudMode ? (process.env.DATA_DIR || '/data') : join(ORCHESTRATOR_DIR, 'data')
 const TOOLS_DIR = join(ORCHESTRATOR_DIR, 'tools')
 const AGENTS_DIR = join(ORCHESTRATOR_DIR, 'agents')
 const PLUGINS_DIR = join(ORCHESTRATOR_DIR, 'plugins')
@@ -22,7 +28,9 @@ const TEMP_DIR = '/tmp/cc-dev-team'
 
 // Ensure data directory exists
 mkdirSync(DATA_DIR, { recursive: true })
-mkdirSync(UPLOADS_DIR, { recursive: true })
+if (!isCloudMode) {
+  mkdirSync(UPLOADS_DIR, { recursive: true })
+}
 mkdirSync(TEMP_DIR, { recursive: true })
 
 // Initialize SQLite database for message persistence
@@ -46,12 +54,18 @@ db.exec(`
 `)
 
 const server = createServer()
-const io = new Server(server, {
-  cors: {
-    origin: '*',
-    methods: ['GET', 'POST']
-  }
-})
+
+// Socket.io is only used in local mode (dashboard communication)
+let io
+if (!isCloudMode) {
+  const { Server } = await import('socket.io')
+  io = new Server(server, {
+    cors: {
+      origin: '*',
+      methods: ['GET', 'POST']
+    }
+  })
+}
 
 // ============================================================================
 // SESSION MANAGEMENT
@@ -285,6 +299,9 @@ function forceKillAgent(session, role) {
 // ============================================================================
 // SOCKET.IO CONNECTION HANDLING
 // ============================================================================
+
+// Socket.io connection handling is local mode only
+if (!isCloudMode) {
 
 io.on('connection', (socket) => {
   const agentRole = socket.handshake.query.agent
@@ -1092,16 +1109,243 @@ io.on('connection', (socket) => {
   })
 })
 
+} // end if (!isCloudMode) — socket.io block
+
 // ============================================================================
 // SERVER STARTUP
 // ============================================================================
 
-const PORT = process.env.BROKER_PORT || 3100
+const PORT = process.env.BROKER_PORT || process.env.PORT || 3100
 
-server.listen(PORT, () => {
-  const dbPath = join(DATA_DIR, 'messages.db')
-  const pad = (str, len) => str + ' '.repeat(Math.max(0, len - str.length))
-  console.log(`
+if (isCloudMode) {
+  // ==========================================================================
+  // CLOUD MODE STARTUP
+  // ==========================================================================
+
+  const { spawnCloudAgent, createHealthEndpoint, createInjectEndpoint, TaskManager, OutboxPoster, GracefulShutdown } = await import('./lib/cloudMode.js')
+  const { createClient } = await import('@supabase/supabase-js')
+
+  // Validate required env vars
+  const SUPABASE_URL = process.env.SUPABASE_URL
+  const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY
+  const TASK_ID = process.env.TASK_ID
+  const MACHINE_JWT = process.env.MACHINE_JWT
+  const MACHINE_ID = process.env.MACHINE_ID || process.env.FLY_MACHINE_ID
+
+  if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
+    console.error('[Cloud] SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY are required')
+    process.exit(1)
+  }
+  if (!TASK_ID) {
+    console.error('[Cloud] TASK_ID is required')
+    process.exit(1)
+  }
+
+  const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
+
+  // Cloud session — single session per container
+  const cloudSessionId = randomUUID()
+  const cloudAgents = new Map() // role -> cloud agent handle
+
+  // Task manager
+  const taskManager = new TaskManager({ supabase, db, sessionId: cloudSessionId })
+
+  // Load task from Supabase
+  let currentTask
+  try {
+    currentTask = await taskManager.loadTask(TASK_ID)
+    console.log(`[Cloud] Loaded task: "${currentTask.title}" (${TASK_ID})`)
+  } catch (err) {
+    console.error(`[Cloud] Failed to load task:`, err.message)
+    process.exit(1)
+  }
+
+  // Outbox poster (bridges PM→human messages to Supabase)
+  const outboxPoster = new OutboxPoster({
+    supabase,
+    taskId: TASK_ID,
+    tenantId: currentTask.tenant_id || currentTask.tenantId
+  })
+
+  // Function to deliver messages to cloud agents via Pi RPC
+  function deliverMessageToAgent(to, content) {
+    const agent = cloudAgents.get(to)
+    if (agent) {
+      agent.steer(content)
+    }
+  }
+
+  // HTTP request router (health + inject endpoints)
+  const healthHandler = createHealthEndpoint(() => ({
+    healthy: cloudAgents.has('pm'),
+    agents: [...cloudAgents.entries()].map(([role, a]) => ({
+      role,
+      status: 'active',
+      pid: a.proc.pid
+    })),
+    currentTask: currentTask ? {
+      id: currentTask.id,
+      status: currentTask.status || 'running',
+      startedAt: currentTask.started_at || currentTask.startedAt
+    } : null
+  }))
+
+  const injectHandler = createInjectEndpoint({
+    db,
+    machineJwt: MACHINE_JWT,
+    sessionId: cloudSessionId,
+    deliverMessage: deliverMessageToAgent
+  })
+
+  server.on('request', (req, res) => {
+    if (req.method === 'GET' && req.url === '/health') {
+      healthHandler(req, res)
+    } else if (req.method === 'POST' && req.url === '/api/inject-message') {
+      let body = ''
+      req.on('data', chunk => body += chunk)
+      req.on('end', () => {
+        try {
+          req.body = JSON.parse(body)
+        } catch {
+          res.writeHead(400, { 'Content-Type': 'application/json' })
+          res.end(JSON.stringify({ error: 'Invalid JSON' }))
+          return
+        }
+        injectHandler(req, res)
+      })
+    } else {
+      res.writeHead(404, { 'Content-Type': 'application/json' })
+      res.end(JSON.stringify({ error: 'Not found' }))
+    }
+  })
+
+  // Heartbeat — update machines.updated_at every 60s
+  let heartbeatInterval
+  if (MACHINE_ID) {
+    heartbeatInterval = setInterval(async () => {
+      try {
+        await supabase
+          .from('machines')
+          .update({ updated_at: new Date().toISOString() })
+          .eq('id', MACHINE_ID)
+      } catch (err) {
+        console.warn('[Cloud] Heartbeat failed:', err.message)
+      }
+    }, 60_000)
+  }
+
+  // Max task duration timer
+  const MAX_TASK_DURATION_MS = parseInt(process.env.MAX_TASK_DURATION_MS || String(2 * 60 * 60 * 1000))
+  const taskTimeout = setTimeout(async () => {
+    console.warn(`[Cloud] Task ${TASK_ID} exceeded max duration (${MAX_TASK_DURATION_MS}ms). Aborting.`)
+
+    for (const [, agent] of cloudAgents) {
+      agent.abort()
+    }
+
+    await taskManager.failTask(TASK_ID, 'Task exceeded maximum duration')
+
+    const nextTask = await taskManager.checkForQueuedTasks()
+    if (nextTask) {
+      console.log(`[Cloud] Next queued task: ${nextTask.id}`)
+    } else {
+      console.log('[Cloud] No queued tasks. Going idle.')
+    }
+  }, MAX_TASK_DURATION_MS)
+
+  // Graceful shutdown
+  const gracefulShutdown = new GracefulShutdown({
+    supabase,
+    db,
+    agents: cloudAgents,
+    machineId: MACHINE_ID,
+    currentTask,
+    heartbeatInterval,
+    taskTimeout
+  })
+
+  process.on('SIGTERM', () => gracefulShutdown.execute().then(() => process.exit(0)))
+  process.on('SIGINT', () => gracefulShutdown.execute().then(() => process.exit(0)))
+
+  // Intercept SQLite writes to detect outbox-bound messages
+  // Poll for new messages to 'human' periodically
+  const outboxCheckInterval = setInterval(() => {
+    try {
+      const humanMessages = db.prepare(
+        'SELECT * FROM messages WHERE session_id = ? AND to_agent = ? AND read = 0'
+      ).all(cloudSessionId, 'human')
+
+      for (const msg of humanMessages) {
+        if (outboxPoster.shouldPost(msg)) {
+          outboxPoster.post(msg)
+          db.prepare('UPDATE messages SET read = 1 WHERE id = ?').run(msg.id)
+        }
+      }
+    } catch { /* ignore transient SQLite errors */ }
+  }, 5_000)
+
+  // Spawn PM agent (the only agent spawned initially in cloud mode)
+  function getAgentConfig(role) {
+    const baseRole = role.match(/^(.+)-\d+$/)?.[1] || role
+    return {
+      systemPrompt: join(AGENTS_DIR, baseRole, 'system-prompt.md'),
+      workDir: process.env.PROJECT_WORK_DIR || DATA_DIR,
+      env: {
+        AGENT_ROLE: role,
+        SESSION_ID: cloudSessionId,
+        BROKER_SESSION_ID: cloudSessionId,
+        ORCHESTRATOR_DIR,
+        GITHUB_TOKEN: process.env.GITHUB_TOKEN || '',
+        ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY || ''
+      },
+      onEvent: (event) => {
+        // Track agent status from RPC events
+        if (event.type === 'error') {
+          console.error(`[Cloud:${role}] Error:`, event.message || event)
+        }
+      },
+      onExit: (code, signal) => {
+        console.log(`[Cloud] Agent ${role} exited (code=${code}, signal=${signal})`)
+        cloudAgents.delete(role)
+      }
+    }
+  }
+
+  const pmAgent = spawnCloudAgent('pm', getAgentConfig('pm'))
+  cloudAgents.set('pm', pmAgent)
+  console.log('[Cloud] PM agent spawned via Pi RPC')
+
+  // Assign the loaded task to PM
+  taskManager.assignTaskToPm(currentTask)
+  // Deliver via broker-delivered messaging (steer the PM directly)
+  const taskContent = `New task assigned: "${currentTask.title}"\n\nDescription: ${currentTask.description || 'N/A'}`
+  pmAgent.prompt(taskContent)
+  console.log('[Cloud] Task assigned to PM')
+
+  // Start HTTP server
+  server.listen(PORT, () => {
+    const pad = (str, len) => str + ' '.repeat(Math.max(0, len - str.length))
+    console.log(`
+╔════════════════════════════════════════════════════════════╗
+║              CC DEV TEAM - CLOUD BROKER                    ║
+╠════════════════════════════════════════════════════════════╣
+║  ${pad('Status: RUNNING', 58)}║
+║  ${pad('Mode: CLOUD', 58)}║
+║  ${pad('Port: ' + PORT, 58)}║
+║  ${pad('Task: ' + TASK_ID, 58)}║
+╚════════════════════════════════════════════════════════════╝
+    `)
+  })
+
+} else {
+  // ==========================================================================
+  // LOCAL MODE STARTUP (unchanged)
+  // ==========================================================================
+
+  server.listen(PORT, () => {
+    const dbPath = join(DATA_DIR, 'messages.db')
+    const pad = (str, len) => str + ' '.repeat(Math.max(0, len - str.length))
+    console.log(`
 ╔════════════════════════════════════════════════════════════╗
 ║                CC DEV TEAM - MESSAGE BROKER                ║
 ╠════════════════════════════════════════════════════════════╣
@@ -1112,44 +1356,45 @@ server.listen(PORT, () => {
 ╚════════════════════════════════════════════════════════════╝
 
 Waiting for connections...
-  `)
-})
+    `)
+  })
 
-// Graceful shutdown — handle both SIGINT (Ctrl+C) and SIGTERM (from parent shell/process manager)
-let shuttingDown = false
-function shutdown() {
-  if (shuttingDown) return
-  shuttingDown = true
+  // Graceful shutdown — handle both SIGINT (Ctrl+C) and SIGTERM (from parent shell/process manager)
+  let shuttingDown = false
+  function shutdown() {
+    if (shuttingDown) return
+    shuttingDown = true
 
-  console.log('\n[Broker] Shutting down...')
+    console.log('\n[Broker] Shutting down...')
 
-  // Kill poller processes first (they hold FIFOs open and block on read)
-  try {
-    const entries = readdirSync(TEMP_DIR)
-    for (const entry of entries) {
-      if (entry.startsWith('poller-') && entry.endsWith('.lock')) {
-        try {
-          const pid = parseInt(readFileSync(join(TEMP_DIR, entry), 'utf8').trim(), 10)
-          if (pid) process.kill(pid, 'SIGTERM')
-        } catch { /* ignore — process already dead or lock corrupted */ }
+    // Kill poller processes first (they hold FIFOs open and block on read)
+    try {
+      const entries = readdirSync(TEMP_DIR)
+      for (const entry of entries) {
+        if (entry.startsWith('poller-') && entry.endsWith('.lock')) {
+          try {
+            const pid = parseInt(readFileSync(join(TEMP_DIR, entry), 'utf8').trim(), 10)
+            if (pid) process.kill(pid, 'SIGTERM')
+          } catch { /* ignore — process already dead or lock corrupted */ }
+        }
+      }
+    } catch { /* TEMP_DIR may not exist */ }
+
+    // Kill all agent processes in all sessions
+    for (const [sessionId, session] of sessions) {
+      for (const [role, proc] of session.processes) {
+        console.log(`[Broker] Killing ${role} in session ${sessionId}`)
+        proc.kill('SIGTERM')
       }
     }
-  } catch { /* TEMP_DIR may not exist */ }
 
-  // Kill all agent processes in all sessions
-  for (const [sessionId, session] of sessions) {
-    for (const [role, proc] of session.processes) {
-      console.log(`[Broker] Killing ${role} in session ${sessionId}`)
-      proc.kill('SIGTERM')
-    }
+    // Clean up all temp files (FIFOs and lock files)
+    try { rmSync(TEMP_DIR, { recursive: true, force: true }) } catch { /* ignore */ }
+
+    db.close()
+    process.exit(0)
   }
 
-  // Clean up all temp files (FIFOs and lock files)
-  try { rmSync(TEMP_DIR, { recursive: true, force: true }) } catch { /* ignore */ }
-
-  db.close()
-  process.exit(0)
+  process.on('SIGINT', shutdown)
+  process.on('SIGTERM', shutdown)
 }
-
-process.on('SIGINT', shutdown)
-process.on('SIGTERM', shutdown)
