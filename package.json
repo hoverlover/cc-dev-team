@@ -22,6 +22,7 @@
     "@lydell/node-pty-darwin-arm64": "^1.2.0-beta.7",
     "@supabase/supabase-js": "^2.99.0",
     "drizzle-orm": "^0.45.1",
+    "jose": "^6.2.1",
     "next": "^16.1.6",
     "node-pty": "^1.1.0",
     "postgres": "^3.4.8",
