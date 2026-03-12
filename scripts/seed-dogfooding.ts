@@ -2,14 +2,14 @@
 /**
  * Seed script for dogfooding environment.
  *
- * Creates tenant, project, CDT API key (with real bcrypt hash),
+ * Creates tenant, project, CDT API key (SHA-256 HMAC hash),
  * and optionally stores a test provider API key in Vault.
  *
  * Usage: bun run scripts/seed-dogfooding.ts
  */
 
 import { createClient } from '@supabase/supabase-js'
-import { randomBytes } from 'node:crypto'
+import { createHmac, randomBytes } from 'node:crypto'
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL ?? 'http://127.0.0.1:54321'
 const SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY ?? ''
@@ -25,10 +25,15 @@ const TENANT_ID = '00000000-0000-0000-0000-000000000001'
 const PROJECT_ID = '00000000-0000-0000-0000-000000000002'
 
 async function main() {
-  // Generate a real CDT API key
+  // Generate a real CDT API key (SHA-256 HMAC, not bcrypt)
+  const CDT_API_KEY_PEPPER = process.env.CDT_API_KEY_PEPPER
+  if (!CDT_API_KEY_PEPPER) {
+    console.error('CDT_API_KEY_PEPPER is required')
+    process.exit(1)
+  }
   const rawKey = `cdt_${randomBytes(24).toString('base64url')}`
   const keyPrefix = rawKey.slice(0, 8)
-  const keyHash = await Bun.password.hash(rawKey, { algorithm: 'bcrypt', cost: 10 })
+  const keyHash = createHmac('sha256', CDT_API_KEY_PEPPER).update(rawKey).digest('hex')
 
   // Upsert tenant
   const { error: tenantErr } = await supabase
