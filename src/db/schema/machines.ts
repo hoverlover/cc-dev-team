@@ -10,6 +10,7 @@ export const machines = pgTable('machines', {
   taskId: uuid('task_id').references(() => tasks.id, { onDelete: 'set null' }),
   flyMachineId: text('fly_machine_id'),
   flyAppName: text('fly_app_name'),
+  machineJwt: text('machine_jwt'),
   status: text('status').default('starting'),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
