@@ -9,6 +9,8 @@ import { randomUUID } from 'crypto'
 import { homedir } from 'os'
 import { getNextInstanceId } from './lib/getNextInstanceId.js'
 import { detectWorktrees } from './lib/worktreeDetection.js'
+// Note: createHealthEndpoint and GracefulShutdown are imported dynamically
+// in cloud mode via ./lib/cloudMode.js
 
 // ============================================================================
 // MODE DETECTION
@@ -1350,6 +1352,7 @@ if (isCloudMode) {
 ║                CC DEV TEAM - MESSAGE BROKER                ║
 ╠════════════════════════════════════════════════════════════╣
 ║  ${pad('Status: RUNNING', 58)}║
+║  ${pad('Mode: ' + CC_MODE.toUpperCase(), 58)}║
 ║  ${pad('Port: ' + PORT, 58)}║
 ║  ${pad('Database: ' + dbPath, 58)}║
 ║  ${pad('Multi-Session: ENABLED', 58)}║
