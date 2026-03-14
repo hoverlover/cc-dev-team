@@ -8,7 +8,10 @@ import { readProjectOverview } from './resources/project-overview'
 import { readProjectActivity } from './resources/project-activity'
 import { readProjectTasks } from './resources/project-tasks'
 import { McpError } from './errors'
-import type { AuthContext } from './auth'
+
+interface AuthContext {
+  tenantId: string
+}
 
 /**
  * Create the MCP server instance with all tools and resources registered.

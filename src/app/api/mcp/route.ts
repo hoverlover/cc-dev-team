@@ -1,5 +1,5 @@
 import { WebStandardStreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js'
-import { authenticateTenant } from './auth'
+import { withAuth } from '../../../lib/auth/middleware'
 import { createServer } from './server'
 import { McpErrorCode } from './errors'
 
@@ -45,13 +45,10 @@ function jsonError(code: number, message: string, httpStatus: number) {
 }
 
 async function handleMcpRequest(request: Request): Promise<Response> {
-  // Authenticate
-  const authHeader = request.headers.get('authorization') ?? ''
-  const auth = await authenticateTenant(authHeader)
-
-  if (!auth) {
-    return jsonError(McpErrorCode.UNAUTHORIZED, 'Unauthorized', 401)
-  }
+  // Authenticate via CDT API key or session token
+  const authResult = await withAuth(request)
+  if (authResult instanceof Response) return authResult
+  const auth = { tenantId: authResult.tenantId }
 
   // Rate limiting
   const { remaining, resetAt } = checkRateLimit(auth.tenantId)
