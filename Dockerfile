@@ -32,6 +32,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY --from=builder /app /app
 WORKDIR /app
 
+# Install Pi agent runtime (used by broker to spawn agents in RPC mode)
+RUN npm install -g @mariozechner/pi-coding-agent
+
 # Create data directory for volume mount
 RUN mkdir -p /data && chown node:node /data
 
