@@ -1,9 +1,13 @@
+import { stat, readFile } from 'node:fs/promises'
+import { join } from 'node:path'
+
 /**
  * Handles graceful SIGTERM shutdown in cloud mode.
  * Aborts agents, flushes state to Supabase, closes SQLite.
+ * Persists cost data and uploads task logs to Supabase Storage.
  */
 export class GracefulShutdown {
-  constructor({ supabase, db, agents, machineId, currentTask, heartbeatInterval, taskTimeout }) {
+  constructor({ supabase, db, agents, machineId, currentTask, heartbeatInterval, taskTimeout, dataDir = '/data' }) {
     this.supabase = supabase
     this.db = db
     this.agents = agents
@@ -11,7 +15,46 @@ export class GracefulShutdown {
     this.currentTask = currentTask
     this.heartbeatInterval = heartbeatInterval
     this.taskTimeout = taskTimeout
+    this.dataDir = dataDir
     this._executed = false
+
+    // Cost tracking (per-agent and per-provider)
+    this._byAgent = new Map()
+    this._byProvider = new Map()
+  }
+
+  addUsage(agent, provider, input, output, costUsd) {
+    this._accumulate(this._byAgent, agent, input, output, costUsd)
+    this._accumulate(this._byProvider, provider, input, output, costUsd)
+  }
+
+  getCostSummary() {
+    let totalInputTokens = 0
+    let totalOutputTokens = 0
+    let totalCostUsd = 0
+    for (const cost of this._byAgent.values()) {
+      totalInputTokens += cost.inputTokens
+      totalOutputTokens += cost.outputTokens
+      totalCostUsd += cost.costUsd
+    }
+    return {
+      totalInputTokens,
+      totalOutputTokens,
+      totalCostUsd,
+      byAgent: Object.fromEntries(this._byAgent),
+      byProvider: Object.fromEntries(this._byProvider),
+    }
+  }
+
+  _accumulate(map, key, input, output, costUsd) {
+    const existing = map.get(key)
+    if (existing) {
+      existing.inputTokens += input
+      existing.outputTokens += output
+      existing.costUsd += costUsd
+    } else {
+      map.set(key, { inputTokens: input, outputTokens: output, costUsd })
+    }
   }
 
   async execute() {
@@ -42,13 +85,30 @@ export class GracefulShutdown {
 
       // 4. Update task status if in-progress
       if (this.currentTask?.status === 'running') {
+        const taskUpdate = {
+          status: 'queued',
+          error: 'Machine stopped during execution'
+        }
+
+        // Include cost data if any usage was recorded
+        const costSummary = this.getCostSummary()
+        if (costSummary.totalInputTokens > 0) {
+          taskUpdate.cost_tokens = {
+            input: costSummary.totalInputTokens,
+            output: costSummary.totalOutputTokens,
+            by_agent: costSummary.byAgent,
+            by_provider: costSummary.byProvider,
+          }
+          taskUpdate.cost_usd = costSummary.totalCostUsd
+        }
+
         await this.supabase
           .from('tasks')
-          .update({
-            status: 'queued',
-            error: 'Machine stopped during execution'
-          })
+          .update(taskUpdate)
           .eq('id', this.currentTask.id)
+
+        // Upload log file to Supabase Storage if it exists and is under 5MB
+        await this._uploadLogFile()
       }
 
       // 5. Update machine status
@@ -66,6 +126,26 @@ export class GracefulShutdown {
       console.log(`[Cloud] Shutdown complete in ${Date.now() - shutdownStart}ms`)
     } catch (err) {
       console.error('[Cloud] Shutdown error:', err)
+    }
+  }
+
+  async _uploadLogFile() {
+    if (!this.currentTask?.id || !this.supabase.storage) return
+
+    const logPath = join(this.dataDir, 'logs', `${this.currentTask.id}.jsonl`)
+    try {
+      const fileStat = await stat(logPath)
+      if (fileStat.size >= 5 * 1024 * 1024) return // skip if over 5MB
+
+      const logContent = await readFile(logPath)
+      await this.supabase.storage
+        .from('task-logs')
+        .upload(`${this.currentTask.id}.jsonl`, logContent, {
+          contentType: 'application/x-ndjson',
+          upsert: true,
+        })
+    } catch {
+      // Log file doesn't exist or upload failed — not critical
     }
   }
 }

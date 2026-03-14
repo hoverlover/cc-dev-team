@@ -102,4 +102,80 @@ describe('GracefulShutdown', () => {
     const hasTaskUpdate = updateCalls.some(c => c[0]?.status === 'queued')
     expect(hasTaskUpdate).toBe(false)
   })
+
+  describe('cost tracking', () => {
+    it('accumulates cost from addUsage calls', () => {
+      shutdown.addUsage('pm', 'anthropic', 1000, 500, 0.015)
+      shutdown.addUsage('engineer', 'anthropic', 2000, 800, 0.025)
+
+      const summary = shutdown.getCostSummary()
+      expect(summary.totalInputTokens).toBe(3000)
+      expect(summary.totalOutputTokens).toBe(1300)
+      expect(summary.totalCostUsd).toBeCloseTo(0.04)
+      expect(summary.byAgent['pm'].inputTokens).toBe(1000)
+      expect(summary.byAgent['engineer'].inputTokens).toBe(2000)
+    })
+
+    it('persists cost data to Supabase on shutdown', async () => {
+      shutdown.addUsage('pm', 'anthropic', 1000, 500, 0.015)
+
+      await shutdown.execute()
+
+      // Find the task update call that has cost_tokens
+      const updateCalls = mockSupabase.update.mock.calls
+      const costUpdate = updateCalls.find(c => c[0]?.cost_tokens)
+      expect(costUpdate).toBeTruthy()
+      expect(costUpdate[0].cost_tokens.input).toBe(1000)
+      expect(costUpdate[0].cost_tokens.output).toBe(500)
+      expect(costUpdate[0].cost_usd).toBe(0.015)
+    })
+
+    it('skips cost update when no usage recorded', async () => {
+      await shutdown.execute()
+
+      const updateCalls = mockSupabase.update.mock.calls
+      const costUpdate = updateCalls.find(c => c[0]?.cost_tokens)
+      expect(costUpdate).toBeUndefined()
+    })
+
+    it('uploads log file to Supabase Storage if under size limit', async () => {
+      const { mkdtemp, writeFile } = await import('node:fs/promises')
+      const { join } = await import('node:path')
+      const { tmpdir } = await import('node:os')
+
+      const tmpDir = await mkdtemp(join(tmpdir(), 'gs-test-'))
+      const { mkdir } = await import('node:fs/promises')
+      await mkdir(join(tmpDir, 'logs'), { recursive: true })
+      await writeFile(join(tmpDir, 'logs', 'task-abc.jsonl'), '{"test":true}\n')
+
+      const mockUpload = vi.fn().mockResolvedValue({ error: null })
+      mockSupabase.storage = {
+        from: vi.fn(() => ({ upload: mockUpload }))
+      }
+
+      shutdown = new GracefulShutdown({
+        supabase: mockSupabase,
+        db: mockDb,
+        agents: mockAgents,
+        machineId: 'fly-machine-1',
+        currentTask: { id: 'task-abc', status: 'running' },
+        heartbeatInterval: null,
+        taskTimeout: null,
+        dataDir: tmpDir
+      })
+
+      await shutdown.execute()
+
+      expect(mockSupabase.storage.from).toHaveBeenCalledWith('task-logs')
+      expect(mockUpload).toHaveBeenCalledWith(
+        'task-abc.jsonl',
+        expect.any(Buffer),
+        expect.objectContaining({ contentType: 'application/x-ndjson' })
+      )
+
+      // Cleanup
+      const { rm } = await import('node:fs/promises')
+      await rm(tmpDir, { recursive: true, force: true })
+    })
+  })
 })
