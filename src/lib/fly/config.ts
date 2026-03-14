@@ -33,13 +33,13 @@ export function buildMachineConfig(params: {
         {
           ports: [{ port: 443, handlers: ['tls', 'http'] }],
           protocol: 'tcp',
-          internal_port: 3100,
+          internal_port: 8080,
         },
       ],
       checks: {
         health: {
           type: 'http',
-          port: 3100,
+          port: 8080,
           path: '/health',
           interval: '30s',
           timeout: '5s',

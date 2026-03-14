@@ -30,7 +30,7 @@ describe('buildMachineConfig', () => {
     expect(config.config.mounts[0]).toEqual({ volume: 'vol-abc', path: '/data' })
   })
 
-  it('includes health check on port 3100', () => {
+  it('includes health check on port 8080', () => {
     const config = buildMachineConfig({
       projectId: 'proj-1',
       tenantId: 'tenant-1',
@@ -40,7 +40,7 @@ describe('buildMachineConfig', () => {
 
     expect(config.config.checks.health).toBeDefined()
     expect(config.config.checks.health.type).toBe('http')
-    expect(config.config.checks.health.port).toBe(3100)
+    expect(config.config.checks.health.port).toBe(8080)
     expect(config.config.checks.health.path).toBe('/health')
   })
 
@@ -54,7 +54,7 @@ describe('buildMachineConfig', () => {
 
     expect(config.config.services).toHaveLength(1)
     const service = config.config.services[0]
-    expect(service.internal_port).toBe(3100)
+    expect(service.internal_port).toBe(8080)
     expect(service.protocol).toBe('tcp')
     expect(service.ports).toEqual(
       expect.arrayContaining([

@@ -1290,7 +1290,7 @@ if (isCloudMode) {
   function getAgentConfig(role) {
     const baseRole = role.match(/^(.+)-\d+$/)?.[1] || role
     return {
-      systemPrompt: join(AGENTS_DIR, baseRole, 'system-prompt.md'),
+      systemPrompt: join(ORCHESTRATOR_DIR, 'pi', 'agents', baseRole, 'SYSTEM.md'),
       workDir: process.env.PROJECT_WORK_DIR || DATA_DIR,
       env: {
         AGENT_ROLE: role,
