@@ -4,13 +4,13 @@ vi.mock('../../src/db/supabase', () => ({
   createAdminClient: vi.fn(),
 }))
 
-vi.mock('../../src/lib/fly-machines', () => ({
+vi.mock('../../src/lib/fly/machines', () => ({
   ensureMachineRunning: vi.fn(),
 }))
 
 import { handleSubmitTask } from '../../src/app/api/mcp/tools/submit-task'
 import { createAdminClient } from '../../src/db/supabase'
-import { ensureMachineRunning } from '../../src/lib/fly-machines'
+import { ensureMachineRunning } from '../../src/lib/fly/machines'
 
 function mockDb(projectRows: any[] = [], insertResult: any = { id: 'task-1' }) {
   const mockClient = {

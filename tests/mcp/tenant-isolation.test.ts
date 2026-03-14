@@ -4,7 +4,7 @@ vi.mock('../../src/db/supabase', () => ({
   createAdminClient: vi.fn(),
 }))
 
-vi.mock('../../src/lib/fly-machines', () => ({
+vi.mock('../../src/lib/fly/machines', () => ({
   ensureMachineRunning: vi.fn(),
   findMachineForProject: vi.fn(),
   injectMessage: vi.fn(),
@@ -15,7 +15,7 @@ import { handleGetTaskStatus } from '../../src/app/api/mcp/tools/get-task-status
 import { handleCheckMessages } from '../../src/app/api/mcp/tools/check-messages'
 import { handleReplyToMessage } from '../../src/app/api/mcp/tools/reply-to-message'
 import { createAdminClient } from '../../src/db/supabase'
-import { ensureMachineRunning } from '../../src/lib/fly-machines'
+import { ensureMachineRunning } from '../../src/lib/fly/machines'
 
 const TENANT_A = 'tenant-aaa'
 const TENANT_B = 'tenant-bbb'

@@ -1,5 +1,5 @@
 import { createAdminClient } from '../../../../db/supabase'
-import { findMachineForProject, injectMessage } from '../../../../lib/fly-machines'
+import { findMachineForProject, injectMessage } from '../../../../lib/fly/machines'
 import { McpError, McpErrorCode } from '../errors'
 
 interface ReplyToMessageInput {

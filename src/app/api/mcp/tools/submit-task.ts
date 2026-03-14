@@ -1,5 +1,5 @@
 import { createAdminClient } from '../../../../db/supabase'
-import { ensureMachineRunning } from '../../../../lib/fly-machines'
+import { ensureMachineRunning } from '../../../../lib/fly/machines'
 import { McpError, McpErrorCode } from '../errors'
 
 interface SubmitTaskInput {

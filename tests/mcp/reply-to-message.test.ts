@@ -4,14 +4,14 @@ vi.mock('../../src/db/supabase', () => ({
   createAdminClient: vi.fn(),
 }))
 
-vi.mock('../../src/lib/fly-machines', () => ({
+vi.mock('../../src/lib/fly/machines', () => ({
   findMachineForProject: vi.fn(),
   injectMessage: vi.fn(),
 }))
 
 import { handleReplyToMessage } from '../../src/app/api/mcp/tools/reply-to-message'
 import { createAdminClient } from '../../src/db/supabase'
-import { findMachineForProject, injectMessage } from '../../src/lib/fly-machines'
+import { findMachineForProject, injectMessage } from '../../src/lib/fly/machines'
 
 function mockDb(outboxRow: any = null, taskRow: any = null) {
   const mockClient = {
