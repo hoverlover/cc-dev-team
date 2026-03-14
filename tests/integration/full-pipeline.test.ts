@@ -31,7 +31,7 @@ vi.mock('../../src/db/supabase', () => ({
   })),
 }))
 
-vi.mock('../../src/lib/fly-machines', () => ({
+vi.mock('../../src/lib/fly/machines', () => ({
   ensureMachineRunning: vi.fn().mockImplementation(async (projectId: string, tenantId: string) => {
     const machine = {
       id: `machine-${Date.now()}`,
@@ -122,7 +122,7 @@ import { handleSubmitTask } from '../../src/app/api/mcp/tools/submit-task'
 import { handleGetTaskStatus } from '../../src/app/api/mcp/tools/get-task-status'
 import { handleCheckMessages } from '../../src/app/api/mcp/tools/check-messages'
 import { handleReplyToMessage } from '../../src/app/api/mcp/tools/reply-to-message'
-import { ensureMachineRunning, findMachineForProject, injectMessage } from '../../src/lib/fly-machines'
+import { ensureMachineRunning, findMachineForProject, injectMessage } from '../../src/lib/fly/machines'
 import { TaskLogger } from '../../src/lib/logging/task-logger'
 
 describe('Integration: Full Pipeline', () => {
