@@ -68,6 +68,10 @@ if (!agentId || !sessionId || !orchestratorDir) {
 const TEMP_DIR = '/tmp/cc-dev-team'
 mkdirSync(TEMP_DIR, { recursive: true })
 
+// Track parent PID so we can detect orphaning.
+// If our parent dies, we'll be reparented to PID 1 (init/launchd).
+const parentPid = process.ppid
+
 // PID lock file to prevent duplicate pollers
 // Include sessionId to avoid collisions between concurrent projects
 const lockFile = `${TEMP_DIR}/poller-${agentId}-${sessionId}.lock`
@@ -112,19 +116,44 @@ try {
   }
 }
 
-// Clean exit — always remove lock file and FIFO
+// Clean exit — remove lock file and FIFO only if we still own the lock.
+// A newer poller may have already taken over, in which case deleting
+// the FIFO would break the new poller's blocking read.
 function cleanup() {
-  try { unlinkSync(lockFile) } catch { /* ignore */ }
-  try { unlinkSync(fifoPath) } catch { /* ignore */ }
+  try {
+    const lockPid = parseInt(readFileSync(lockFile, 'utf8').trim(), 10)
+    if (lockPid === process.pid) {
+      try { unlinkSync(lockFile) } catch { /* ignore */ }
+      try { unlinkSync(fifoPath) } catch { /* ignore */ }
+    }
+  } catch {
+    // Lock file already gone — nothing to clean up
+  }
 }
 
+// Track whether we're already exiting to prevent re-entrant cleanup
+let exiting = false
 function exit(code) {
+  if (exiting) return
+  exiting = true
   cleanup()
   process.exit(code)
 }
 
 process.on('SIGTERM', () => exit(0))
 process.on('SIGINT', () => exit(0))
+process.on('SIGHUP', () => exit(0))
+
+// Orphan detection: if parent process dies, we get reparented to PID 1 (launchd).
+// Check periodically and exit if orphaned — this catches cases where the Bash tool
+// kills the shell but SIGHUP doesn't reach us.
+const orphanCheck = setInterval(() => {
+  if (process.ppid !== parentPid) {
+    clearInterval(orphanCheck)
+    exit(0)
+  }
+}, 5000)
+orphanCheck.unref() // Don't keep process alive just for this check
 
 // Set up DB query targets
 const baseRole = agentId.replace(/-\d+$/, '')
@@ -214,14 +243,22 @@ function createFifo() {
 const hasFifo = createFifo()
 
 if (hasFifo) {
-  // FIFO mode: block on read indefinitely, instant wake-up from broker.
-  // No timeout needed — FIFO read uses zero CPU while blocked, and the broker
-  // writes to it as soon as a message arrives. A timeout would just cause
-  // unnecessary restart loops that burn API turns.
+  // FIFO mode: block on read with a timeout, instant wake-up from broker.
+  // The timeout ensures orphaned processes don't live forever if the parent
+  // dies without sending a signal (e.g., Bash tool timeout kills shell but
+  // SIGHUP doesn't reach the node process).
+  //
+  // We use a hard timeout via process.exit because fd.read on a FIFO blocks
+  // at the OS level and can't be cancelled via AbortController.
+  const timeoutHandle = setTimeout(() => {
+    console.log(`No messages after ${timeoutSeconds}s timeout (FIFO)`)
+    exit(1)
+  }, timeoutSeconds * 1000)
   try {
     const fd = await open(fifoPath, 'r')
     const buf = Buffer.alloc(64)
     await fd.read(buf, 0, 64)
+    clearTimeout(timeoutHandle)
     await fd.close()
 
     if (deliverMode) {
@@ -231,6 +268,7 @@ if (hasFifo) {
     }
     exit(0)
   } catch {
+    clearTimeout(timeoutHandle)
     exit(0)
   }
 } else {
